@@ -1,2 +1,2 @@
-# AgregatorInsurer
+# Agregator
 Project for Cyberimmune Systems
