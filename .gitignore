@@ -1,0 +1,19 @@
+# Go binaries
+aggregator
+/aggregator
+
+# Go build cache
+*.test
+*.out
+
+# Environment files
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Docker volumes
+data/

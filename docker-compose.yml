@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  # Kafka + Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # Создание топиков при старте 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on:
+      - kafka
+    entrypoint: >
+      bash -c "
+        echo 'Waiting for Kafka...';
+        sleep 10;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.requests;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic aggregator.dead-letter;
+        echo 'Topics created.';
+      "
+
+  # Сервис агрегатора
+  aggregator:
+    build:
+      context: .
+    depends_on:
+      - kafka-init
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_REQUEST_TOPIC: aggregator.requests
+      KAFKA_RESPONSE_TOPIC: aggregator.responses
+      KAFKA_CONSUMER_GROUP: aggregator-group
+      KAFKA_DLT_TOPIC: aggregator.dead-letter
+    restart: on-failure
