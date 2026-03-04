@@ -46,6 +46,8 @@ services:
       context: .
     depends_on:
       - kafka-init
+    ports:
+      - "8080:8080" # REST API для фронтенда
     environment:
       KAFKA_BROKER: kafka:9092
       KAFKA_REQUEST_TOPIC: aggregator.requests
