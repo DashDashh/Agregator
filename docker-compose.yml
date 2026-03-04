@@ -1,6 +1,23 @@
 version: "3.9"
 
 services:
+  # PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aggregator
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: aggregator
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # данные живут между перезапусками
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U aggregator" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # Kafka + Zookeeper
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
@@ -46,7 +63,10 @@ services:
     build:
       context: .
     depends_on:
-      - kafka-init
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080" # REST API для фронтенда
     environment:
@@ -56,4 +76,9 @@ services:
       KAFKA_CONSUMER_GROUP: aggregator-group
       KAFKA_DLT_TOPIC: aggregator.dead-letter
       KAFKA_OPERATOR_TOPIC: operator.requests
+      DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
+      MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure
+
+volumes:
+  postgres_data:

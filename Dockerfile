@@ -1,5 +1,5 @@
 # ─── Stage 1: build ──────────────────────────────────────────────────────────
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -15,6 +15,8 @@ FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /aggregator /aggregator
+# Миграции должны быть доступны при запуске сервиса
+COPY --from=builder /app/migrations /migrations
 
 # Конфигурация передаётся через переменные окружения
 ENV KAFKA_BROKER=kafka:9092 \

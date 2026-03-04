@@ -13,8 +13,6 @@ import (
 )
 
 // Publisher — интерфейс для отправки сообщений в Kafka.
-// Определяем здесь (в пакете api), чтобы не создавать зависимость от пакета kafka.
-// kafka.Service реализует этот интерфейс автоматически — в Go не нужно явно писать "implements".
 type Publisher interface {
 	PublishOrder(ctx context.Context, order *store.Order) error
 }
@@ -78,7 +76,11 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Status:      store.StatusPending,
 		CreatedAt:   time.Now(),
 	}
-	h.store.SaveOrder(order)
+	if err := h.store.SaveOrder(order); err != nil {
+		log.Printf("[api] failed to save order: %v", err)
+		respondError(w, http.StatusInternalServerError, "ошибка сохранения заказа")
+		return
+	}
 	log.Printf("[api] order created id=%s customer=%s", order.ID, order.CustomerID)
 
 	// Отправляем заказ эксплуатантам через Kafka — они его прочитают из operator.requests
@@ -137,7 +139,11 @@ func (h *Handler) RegisterOperator(w http.ResponseWriter, r *http.Request) {
 		License: req.License,
 		Email:   req.Email,
 	}
-	h.store.SaveOperator(op)
+	if err := h.store.SaveOperator(op); err != nil {
+		log.Printf("[api] failed to save operator: %v", err)
+		respondError(w, http.StatusInternalServerError, "ошибка сохранения")
+		return
+	}
 	log.Printf("[api] operator registered id=%s name=%s", op.ID, op.Name)
 
 	respond(w, http.StatusCreated, op)
@@ -169,10 +175,46 @@ func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 		Email: req.Email,
 		Phone: req.Phone,
 	}
-	h.store.SaveCustomer(c)
+	if err := h.store.SaveCustomer(c); err != nil {
+		log.Printf("[api] failed to save customer: %v", err)
+		respondError(w, http.StatusInternalServerError, "ошибка сохранения")
+		return
+	}
 	log.Printf("[api] customer registered id=%s name=%s", c.ID, c.Name)
 
 	respond(w, http.StatusCreated, c)
+}
+
+// PUT /orders/{id}/status — изменить статус заказа
+//
+// Тело запроса: { "status": "confirmed" }
+func (h *Handler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
+	// URL вида /orders/{id}/status
+	path := strings.TrimPrefix(r.URL.Path, "/orders/")
+	id := strings.TrimSuffix(path, "/status")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "id заказа не указан")
+		return
+	}
+
+	var req struct {
+		Status store.OrderStatus `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
+		return
+	}
+	if req.Status == "" {
+		respondError(w, http.StatusBadRequest, "поле status обязательно")
+		return
+	}
+
+	if !h.store.UpdateOrderStatus(id, req.Status) {
+		respondError(w, http.StatusNotFound, "заказ не найден")
+		return
+	}
+	log.Printf("[api] order status updated id=%s status=%s", id, req.Status)
+	respond(w, http.StatusOK, map[string]string{"status": string(req.Status)})
 }
 
 // вспомогательные функции
