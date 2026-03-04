@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -11,13 +12,21 @@ import (
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 
-// HTTP-обработчики REST API для фронтенда
-type Handler struct {
-	store *store.Store
+// Publisher — интерфейс для отправки сообщений в Kafka.
+// Определяем здесь (в пакете api), чтобы не создавать зависимость от пакета kafka.
+// kafka.Service реализует этот интерфейс автоматически — в Go не нужно явно писать "implements".
+type Publisher interface {
+	PublishOrder(ctx context.Context, order *store.Order) error
 }
 
-func NewHandler(s *store.Store) *Handler {
-	return &Handler{store: s}
+// HTTP-обработчики REST API для фронтенда
+type Handler struct {
+	store     *store.Store
+	publisher Publisher // отправляет заказы эксплуатантам через Kafka
+}
+
+func NewHandler(s *store.Store, p Publisher) *Handler {
+	return &Handler{store: s, publisher: p}
 }
 
 // проверка что сервис жив
@@ -71,6 +80,12 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	h.store.SaveOrder(order)
 	log.Printf("[api] order created id=%s customer=%s", order.ID, order.CustomerID)
+
+	// Отправляем заказ эксплуатантам через Kafka — они его прочитают из operator.requests
+	if err := h.publisher.PublishOrder(r.Context(), order); err != nil {
+		log.Printf("[api] failed to publish order to kafka: %v", err)
+		// не падаем — заказ уже сохранён, оператор получит его позже
+	}
 
 	respond(w, http.StatusCreated, order)
 }

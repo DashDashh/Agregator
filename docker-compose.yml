@@ -36,6 +36,7 @@ services:
         sleep 10;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.requests;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic operator.requests;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic aggregator.dead-letter;
         echo 'Topics created.';
       "
@@ -54,4 +55,5 @@ services:
       KAFKA_RESPONSE_TOPIC: aggregator.responses
       KAFKA_CONSUMER_GROUP: aggregator-group
       KAFKA_DLT_TOPIC: aggregator.dead-letter
+      KAFKA_OPERATOR_TOPIC: operator.requests
     restart: on-failure

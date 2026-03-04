@@ -10,6 +10,7 @@ type Config struct {
 	ResponseTopic   string
 	ConsumerGroup   string
 	DeadLetterTopic string
+	OperatorTopic   string // топик куда агрегатор пишет задания для эксплуатантов
 }
 
 func Load() *Config {
@@ -19,6 +20,7 @@ func Load() *Config {
 		ResponseTopic:   getEnv("KAFKA_RESPONSE_TOPIC", "aggregator.responses"),
 		ConsumerGroup:   getEnv("KAFKA_CONSUMER_GROUP", "aggregator-group"),
 		DeadLetterTopic: getEnv("KAFKA_DLT_TOPIC", "aggregator.dead-letter"),
+		OperatorTopic:   getEnv("KAFKA_OPERATOR_TOPIC", "operator.requests"),
 	}
 }
 

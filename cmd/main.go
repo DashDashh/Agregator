@@ -26,12 +26,12 @@ func main() {
 	// Хранилище в памяти (заглушка вместо БД)
 	s := store.New()
 
-	// Kafka-сервис
+	// Kafka-сервис — передаём store чтобы он мог обновлять статусы заказов
 	h := handler.New()
-	svc := kafka.NewService(cfg, h)
+	svc := kafka.NewService(cfg, h, s)
 
-	// HTTP-сервер для фронтенда
-	apiHandler := api.NewHandler(s)
+	// HTTP-сервер для фронтенда — передаём kafka сервис как Publisher
+	apiHandler := api.NewHandler(s, svc)
 	router := api.NewRouter(apiHandler)
 	httpServer := &http.Server{
 		Addr:    ":8080",
