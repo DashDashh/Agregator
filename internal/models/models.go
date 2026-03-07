@@ -24,6 +24,18 @@ const (
 	MsgCreateDispute MessageType = "create_dispute"
 	// ОФ9. Аналитика и визуализация операционной деятельности
 	MsgGetAnalytics MessageType = "get_analytics"
+
+	// Сообщения от эксплуатанта агрегатору (читаем из operator.responses)
+
+	// MsgPriceOffer — эксплуатант сообщает цену, за которую готов выполнить заказ
+	MsgPriceOffer MessageType = "price_offer"
+	// MsgOrderResult — эксплуатант сообщает о завершении (успех/провал) заказа
+	MsgOrderResult MessageType = "order_result"
+
+	// Сообщения от агрегатора  эксплуатанту (пишем в operator.requests)
+
+	// MsgConfirmPrice — пользователь подтвердил цену эксплуатанта и готов работать с ним
+	MsgConfirmPrice MessageType = "confirm_price"
 )
 
 // Входящий конверт
@@ -186,4 +198,35 @@ type GetAnalyticsResponse struct {
 	ActiveContracts int     `json:"active_contracts"`
 	TotalRevenue    float64 `json:"total_revenue"`
 	Disputes        int     `json:"disputes"`
+}
+
+// Сообщения от эксплуатанта агрегатору
+
+// PriceOfferPayload — эксплуатант даёт оферту цены на выполнение заказа.
+// Агрегатор сохраняет эту цену в БД и показывает пользователю через GET /orders/{id}.
+type PriceOfferPayload struct {
+	OrderID          string  `json:"order_id"`
+	OperatorID       string  `json:"operator_id"`
+	OperatorName     string  `json:"operator_name"`
+	Price            float64 `json:"price"`
+	EstimatedTimeMin int     `json:"estimated_time_minutes"`
+}
+
+// OrderResultPayload — эксплуатант сообщает о результате выполнения заказа.
+// Статус заказа обновляется автоматически: Success=true → "completed", Success=false → "dispute".
+type OrderResultPayload struct {
+	OrderID    string `json:"order_id"`
+	OperatorID string `json:"operator_id"`
+	Success    bool   `json:"success"`
+	Reason     string `json:"reason"` // пустая строка при успехе, описание причины при срыве
+}
+
+// Сообщения от агрегатора  эксплуатанту (operator.requests)
+
+// ConfirmPricePayload — пользователь подтвердил цену эксплуатанта.
+// Агрегатор пересылает это сообщение эксплуатанту, который ожидает подтверждения перед началом выполнения.
+type ConfirmPricePayload struct {
+	OrderID       string  `json:"order_id"`
+	OperatorID    string  `json:"operator_id"`
+	AcceptedPrice float64 `json:"accepted_price"`
 }

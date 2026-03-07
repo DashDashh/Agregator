@@ -71,7 +71,14 @@ func main() {
 		httpServer.Shutdown(context.Background()) //nolint:errcheck
 	}()
 
-	// Kafka-цикл блокирует до остановки
+	// Kafka-цикл читает aggregator.requests — блокирует до остановки
+	// Параллельно запускаем consumer operator.responses (оферты и результаты)
+	go func() {
+		if err := svc.RunOperatorConsumer(ctx); err != nil && err != context.Canceled {
+			log.Printf("[main] operator consumer exited: %v", err)
+		}
+	}()
+
 	if err := svc.Run(ctx); err != nil && err != context.Canceled {
 		log.Fatalf("[main] service exited with error: %v", err)
 	}

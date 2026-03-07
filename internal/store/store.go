@@ -23,16 +23,18 @@ const (
 
 // Order — запись о заказе
 type Order struct {
-	ID          string      `json:"id"`
-	CustomerID  string      `json:"customer_id"`
-	Description string      `json:"description"`
-	Budget      float64     `json:"budget"`
-	FromLat     float64     `json:"from_lat"`
-	FromLon     float64     `json:"from_lon"`
-	ToLat       float64     `json:"to_lat"`
-	ToLon       float64     `json:"to_lon"`
-	Status      OrderStatus `json:"status"`
-	CreatedAt   time.Time   `json:"created_at"`
+	ID           string      `json:"id"`
+	CustomerID   string      `json:"customer_id"`
+	Description  string      `json:"description"`
+	Budget       float64     `json:"budget"`
+	FromLat      float64     `json:"from_lat"`
+	FromLon      float64     `json:"from_lon"`
+	ToLat        float64     `json:"to_lat"`
+	ToLon        float64     `json:"to_lon"`
+	Status       OrderStatus `json:"status"`
+	OperatorID   string      `json:"operator_id,omitempty"`   // заполняется когда эксплуатант даёт оферту
+	OfferedPrice float64     `json:"offered_price,omitempty"` // цена от эксплуатанта
+	CreatedAt    time.Time   `json:"created_at"`
 }
 
 // Operator — зарегистрированный эксплуатант
@@ -89,24 +91,24 @@ func (s *Store) RunMigrations(sqlText string) error {
 func (s *Store) SaveOrder(o *Order) error {
 	// ON CONFLICT (id) DO UPDATE — upsert: вставить или обновить если id уже есть
 	_, err := s.db.Exec(`
-		INSERT INTO orders (id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO orders (id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
 	`, o.ID, o.CustomerID, o.Description, o.Budget,
 		o.FromLat, o.FromLon, o.ToLat, o.ToLon,
-		string(o.Status), o.CreatedAt)
+		string(o.Status), o.OperatorID, o.OfferedPrice, o.CreatedAt)
 	return err
 }
 
 func (s *Store) GetOrder(id string) (*Order, bool) {
 	o := &Order{}
 	err := s.db.QueryRow(`
-		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, created_at
+		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at
 		FROM orders WHERE id = $1
 	`, id).Scan(
 		&o.ID, &o.CustomerID, &o.Description, &o.Budget,
 		&o.FromLat, &o.FromLon, &o.ToLat, &o.ToLon,
-		&o.Status, &o.CreatedAt,
+		&o.Status, &o.OperatorID, &o.OfferedPrice, &o.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, false // не нашли — возвращаем false как раньше
@@ -119,7 +121,7 @@ func (s *Store) GetOrder(id string) (*Order, bool) {
 
 func (s *Store) ListOrders() []*Order {
 	rows, err := s.db.Query(`
-		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, created_at
+		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at
 		FROM orders ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -133,7 +135,7 @@ func (s *Store) ListOrders() []*Order {
 		if err := rows.Scan(
 			&o.ID, &o.CustomerID, &o.Description, &o.Budget,
 			&o.FromLat, &o.FromLon, &o.ToLat, &o.ToLon,
-			&o.Status, &o.CreatedAt,
+			&o.Status, &o.OperatorID, &o.OfferedPrice, &o.CreatedAt,
 		); err != nil {
 			continue
 		}
@@ -149,6 +151,20 @@ func (s *Store) UpdateOrderStatus(id string, status OrderStatus) bool {
 	}
 	n, _ := res.RowsAffected() // сколько строк было изменено
 	return n > 0               // если 0 — такого заказа нет
+}
+
+// SetOperatorOffer сохраняет оферту от эксплуатанта: его ID и предложенную цену.
+// Вызывается из Kafka consumer когда приходит сообщение price_offer.
+func (s *Store) SetOperatorOffer(orderID, operatorID string, price float64) bool {
+	res, err := s.db.Exec(
+		`UPDATE orders SET operator_id = $1, offered_price = $2, status = $3 WHERE id = $4`,
+		operatorID, price, string(StatusMatched), orderID,
+	)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 // Operators
@@ -178,7 +194,7 @@ func (s *Store) GetOperator(id string) (*Operator, bool) {
 func (s *Store) SaveCustomer(c *Customer) error {
 	_, err := s.db.Exec(`
 		INSERT INTO customers (id, name, email, phone)
-		VALUES ($1, $2, $3, $4)
+ 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (id) DO NOTHING
 	`, c.ID, c.Name, c.Email, c.Phone)
 	return err

@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kirilltahmazidi/aggregator/internal/models"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 
 // Publisher — интерфейс для отправки сообщений в Kafka.
 type Publisher interface {
 	PublishOrder(ctx context.Context, order *store.Order) error
+	PublishConfirmPrice(ctx context.Context, payload models.ConfirmPricePayload) error
 }
 
 // HTTP-обработчики REST API для фронтенда
@@ -185,36 +187,59 @@ func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, c)
 }
 
-// PUT /orders/{id}/status — изменить статус заказа
+// POST /orders/{id}/confirm-price — пользователь подтверждает цену эксплуатанта.
+// Агрегатор отправляет сообщение confirm_price эксплуатанту через Kafka (operator.requests)
+// и обновляет статус заказа на "confirmed".
 //
-// Тело запроса: { "status": "confirmed" }
-func (h *Handler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
-	// URL вида /orders/{id}/status
+// Тело запроса: { "operator_id": "uuid", "accepted_price": 4500.00 }
+func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
+	// извлекаем order_id из URL /orders/{id}/confirm-price
 	path := strings.TrimPrefix(r.URL.Path, "/orders/")
-	id := strings.TrimSuffix(path, "/status")
-	if id == "" {
+	orderID := strings.TrimSuffix(path, "/confirm-price")
+	if orderID == "" {
 		respondError(w, http.StatusBadRequest, "id заказа не указан")
 		return
 	}
 
 	var req struct {
-		Status store.OrderStatus `json:"status"`
+		OperatorID    string  `json:"operator_id"`
+		AcceptedPrice float64 `json:"accepted_price"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
 		return
 	}
-	if req.Status == "" {
-		respondError(w, http.StatusBadRequest, "поле status обязательно")
+	if req.OperatorID == "" || req.AcceptedPrice <= 0 {
+		respondError(w, http.StatusBadRequest, "operator_id и accepted_price обязательны")
 		return
 	}
 
-	if !h.store.UpdateOrderStatus(id, req.Status) {
+	_, ok := h.store.GetOrder(orderID)
+	if !ok {
 		respondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	log.Printf("[api] order status updated id=%s status=%s", id, req.Status)
-	respond(w, http.StatusOK, map[string]string{"status": string(req.Status)})
+
+	// Сменяем статус на confirmed и отправляем цену эксплуатанту
+	h.store.UpdateOrderStatus(orderID, store.StatusConfirmed)
+
+	payload := models.ConfirmPricePayload{
+		OrderID:       orderID,
+		OperatorID:    req.OperatorID,
+		AcceptedPrice: req.AcceptedPrice,
+	}
+	if err := h.publisher.PublishConfirmPrice(r.Context(), payload); err != nil {
+		log.Printf("[api] failed to publish confirm_price: %v", err)
+		// не падаем — статус уже обновлён
+	}
+	log.Printf("[api] price confirmed order_id=%s operator=%s price=%.2f", orderID, req.OperatorID, req.AcceptedPrice)
+
+	respond(w, http.StatusOK, map[string]interface{}{
+		"order_id":       orderID,
+		"operator_id":    req.OperatorID,
+		"accepted_price": req.AcceptedPrice,
+		"status":         "confirmed",
+	})
 }
 
 // вспомогательные функции

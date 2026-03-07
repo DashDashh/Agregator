@@ -18,16 +18,18 @@ CREATE TABLE IF NOT EXISTS operators (
 
 -- Заказы на доставку
 CREATE TABLE IF NOT EXISTS orders (
-    id          TEXT PRIMARY KEY,
-    customer_id TEXT NOT NULL REFERENCES customers(id),
-    description TEXT NOT NULL,
-    budget      NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    from_lat    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    from_lon    DOUBLE PRECISION NOT NULL DEFAULT 0,
-    to_lat      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    to_lon      DOUBLE PRECISION NOT NULL DEFAULT 0,
-    status      TEXT NOT NULL DEFAULT 'pending',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id            TEXT PRIMARY KEY,
+    customer_id   TEXT NOT NULL REFERENCES customers(id),
+    description   TEXT NOT NULL,
+    budget        NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    from_lat      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    from_lon      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    to_lat        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    to_lon        DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    operator_id   TEXT NOT NULL DEFAULT '',          -- заполняется когда эксплуатант даёт оферту
+    offered_price NUMERIC(12, 2) NOT NULL DEFAULT 0, -- цена предложенная эксплуатантом
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Индекс для быстрого поиска заказов по заказчику

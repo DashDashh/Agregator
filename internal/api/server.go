@@ -22,8 +22,8 @@ func NewRouter(h *Handler) http.Handler {
 	})
 
 	mux.HandleFunc("/orders/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/status") {
-			h.UpdateOrderStatus(w, r)
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/confirm-price") {
+			h.ConfirmPrice(w, r)
 			return
 		}
 		if r.Method == http.MethodGet {
