@@ -242,7 +242,7 @@ curl -s -X POST http://localhost:8080/orders/$ORDER_ID/confirm-price \
 
 ## Kafka — форматы сообщений
 
-### Агрегатор → Эксплуатант (`operator.requests`)
+### Агрегатор → Эксплуатант (`<prefix>.operator.requests`)
 
 Все сообщения завёрнуты в стандартный конверт:
 
@@ -288,7 +288,7 @@ curl -s -X POST http://localhost:8080/orders/$ORDER_ID/confirm-price \
 
 ---
 
-### Эксплуатант → Агрегатор (`operator.responses`)
+### Эксплуатант → Агрегатор (`<prefix>.operator.responses`)
 
 #### `price_offer` — эксплуатант называет свою цену
 
@@ -347,13 +347,21 @@ curl -s -X POST http://localhost:8080/orders/$ORDER_ID/confirm-price \
 
 ## Kafka — топики
 
-| Топик                   | Направление         | Кто читает         |
+Формат имени топика: `<prefix>.<component>.<direction>`, где
+
+- `<prefix> = <protocol_version>.<system_name>.<instance_id>`
+- по умолчанию: `v1.aggregator_insurer.local`
+- для разных стендов меняется `instance_id` (например `dev-kirill`, `test-team4`, `prod-eu1`)
+
+Это убирает конфликты между экземплярами систем и сразу закладывает версионирование протокола.
+
+| Топик | Направление | Кто читает |
 |-------------------------|---------------------|--------------------|
-| `operator.requests`     | Агрегатор → Эксп.   | Сервис эксплуатанта |
-| `operator.responses`    | Эксп. → Агрегатор   | Агрегатор (этот сервис) |
-| `aggregator.requests`   | Внешние → Агрегатор | Агрегатор           |
-| `aggregator.responses`  | Агрегатор → Внешние | Внешние сервисы     |
-| `aggregator.dead-letter`| Мусорные сообщения  | —                  |
+| `<prefix>.operator.requests` | Агрегатор → Эксп. | Сервис эксплуатанта |
+| `<prefix>.operator.responses` | Эксп. → Агрегатор | Агрегатор (этот сервис) |
+| `<prefix>.aggregator.requests` | Внешние → Агрегатор | Агрегатор |
+| `<prefix>.aggregator.responses` | Агрегатор → Внешние | Внешние сервисы |
+| `<prefix>.aggregator.dead_letter` | Мусорные сообщения | — |
 
 ---
 
