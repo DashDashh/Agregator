@@ -187,6 +187,23 @@ func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, c)
 }
 
+// GET /customers/{id} — получить данные заказчика
+func (h *Handler) GetCustomer(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/customers/")
+	if path == "" {
+		respondError(w, http.StatusBadRequest, "id заказчика не указан")
+		return
+	}
+
+	c, ok := h.store.GetCustomer(path)
+	if !ok {
+		respondError(w, http.StatusNotFound, "заказчик не найден")
+		return
+	}
+
+	respond(w, http.StatusOK, c)
+}
+
 // POST /orders/{id}/confirm-price — пользователь подтверждает цену эксплуатанта.
 // Агрегатор отправляет сообщение confirm_price эксплуатанту через Kafka (operator.requests)
 // и обновляет статус заказа на "confirmed".

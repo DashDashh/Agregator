@@ -7,18 +7,18 @@ import (
 
 // Middleware
 func enableCORS(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "*") // !
-        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-        // если это предзапрос - CORS (OPTIONS) => 200 OK
-        if r.Method == http.MethodOptions {
-            w.WriteHeader(http.StatusOK)
-            return
-        }
-		
-        next.ServeHTTP(w, r)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*") // !
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// если это предзапрос - CORS (OPTIONS) => 200 OK
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewRouter(h *Handler) http.Handler {
@@ -65,6 +65,15 @@ func NewRouter(h *Handler) http.Handler {
 		} else {
 			http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
 		}
+	})
+
+	// Получение заказчика по ID
+	mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			h.GetCustomer(w, r)
+			return
+		}
+		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
 	})
 
 	return enableCORS(mux)
