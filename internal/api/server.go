@@ -42,6 +42,10 @@ func NewRouter(h *Handler) http.Handler {
 			h.ConfirmPrice(w, r)
 			return
 		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/confirm-completion") {
+			h.ConfirmCompletion(w, r)
+			return
+		}
 		if r.Method == http.MethodGet {
 			h.GetOrder(w, r)
 		} else {

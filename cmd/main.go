@@ -46,7 +46,7 @@ func main() {
 	svc := kafka.NewService(cfg, h, s)
 
 	// HTTP-сервер для фронтенда — передаём kafka сервис как Publisher
-	apiHandler := api.NewHandler(s, svc)
+	apiHandler := api.NewHandler(s, svc, cfg.CommissionRate)
 	router := api.NewRouter(apiHandler)
 	httpServer := &http.Server{
 		Addr:    ":8080",

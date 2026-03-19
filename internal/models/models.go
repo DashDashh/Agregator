@@ -93,13 +93,19 @@ type RegisterCustomerResponse struct {
 // ОФ3
 
 type CreateOrderRequest struct {
-	CustomerID  string  `json:"customer_id"`
-	Description string  `json:"description"`
-	Budget      float64 `json:"budget"`
-	FromLat     float64 `json:"from_lat"`
-	FromLon     float64 `json:"from_lon"`
-	ToLat       float64 `json:"to_lat"`
-	ToLon       float64 `json:"to_lon"`
+	CustomerID     string   `json:"customer_id"`
+	Description    string   `json:"description"`
+	Budget         float64  `json:"budget"`
+	FromLat        float64  `json:"from_lat"`
+	FromLon        float64  `json:"from_lon"`
+	ToLat          float64  `json:"to_lat"`
+	ToLon          float64  `json:"to_lon"`
+	MissionType    string   `json:"mission_type"`
+	SecurityGoals  []string `json:"security_goals,omitempty"`
+	TopLeftLat     float64  `json:"top_left_lat,omitempty"`
+	TopLeftLon     float64  `json:"top_left_lon,omitempty"`
+	BottomRightLat float64  `json:"bottom_right_lat,omitempty"`
+	BottomRightLon float64  `json:"bottom_right_lon,omitempty"`
 }
 
 type CreateOrderResponse struct {
@@ -205,20 +211,23 @@ type GetAnalyticsResponse struct {
 // PriceOfferPayload — эксплуатант даёт оферту цены на выполнение заказа.
 // Агрегатор сохраняет эту цену в БД и показывает пользователю через GET /orders/{id}.
 type PriceOfferPayload struct {
-	OrderID          string  `json:"order_id"`
-	OperatorID       string  `json:"operator_id"`
-	OperatorName     string  `json:"operator_name"`
-	Price            float64 `json:"price"`
-	EstimatedTimeMin int     `json:"estimated_time_minutes"`
+	OrderID               string   `json:"order_id"`
+	OperatorID            string   `json:"operator_id"`
+	OperatorName          string   `json:"operator_name"`
+	Price                 float64  `json:"price"`
+	EstimatedTimeMin      int      `json:"estimated_time_minutes"`
+	ProvidedSecurityGoals []string `json:"provided_security_goals,omitempty"`
+	InsuranceCoverage     string   `json:"insurance_coverage,omitempty"`
 }
 
 // OrderResultPayload — эксплуатант сообщает о результате выполнения заказа.
 // Статус заказа обновляется автоматически: Success=true → "completed", Success=false → "dispute".
 type OrderResultPayload struct {
-	OrderID    string `json:"order_id"`
-	OperatorID string `json:"operator_id"`
-	Success    bool   `json:"success"`
-	Reason     string `json:"reason"` // пустая строка при успехе, описание причины при срыве
+	OrderID    string  `json:"order_id"`
+	OperatorID string  `json:"operator_id"`
+	Success    bool    `json:"success"`
+	Reason     string  `json:"reason"` // пустая строка при успехе, описание причины при срыве
+	TotalPrice float64 `json:"total_price,omitempty"`
 }
 
 // Сообщения от агрегатора  эксплуатанту (operator.requests)
@@ -226,7 +235,9 @@ type OrderResultPayload struct {
 // ConfirmPricePayload — пользователь подтвердил цену эксплуатанта.
 // Агрегатор пересылает это сообщение эксплуатанту, который ожидает подтверждения перед началом выполнения.
 type ConfirmPricePayload struct {
-	OrderID       string  `json:"order_id"`
-	OperatorID    string  `json:"operator_id"`
-	AcceptedPrice float64 `json:"accepted_price"`
+	OrderID          string  `json:"order_id"`
+	OperatorID       string  `json:"operator_id"`
+	AcceptedPrice    float64 `json:"accepted_price"`
+	CommissionAmount float64 `json:"commission_amount"`
+	OperatorAmount   float64 `json:"operator_amount"`
 }

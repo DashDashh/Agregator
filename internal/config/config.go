@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -13,6 +14,7 @@ type Config struct {
 	DeadLetterTopic       string
 	OperatorTopic         string // топик куда агрегатор пишет задания для эксплуатантов
 	OperatorResponseTopic string // топик откуда агрегатор читает ответы эксплуатантов
+	CommissionRate        float64
 	DatabaseURL           string
 	MigrationsPath        string // путь к SQL-файлу миграции
 }
@@ -22,6 +24,7 @@ func Load() *Config {
 		defaultProtocolVersion = "v1"
 		defaultSystemName      = "aggregator_insurer"
 		defaultInstanceID      = "local"
+		defaultCommissionRate  = 0.1
 	)
 
 	protocolVersion := getEnv("KAFKA_PROTOCOL_VERSION", defaultProtocolVersion)
@@ -36,6 +39,8 @@ func Load() *Config {
 	defaultOperatorResponseTopic := topicPrefix + ".operator.responses"
 	defaultConsumerGroup := fmt.Sprintf("%s-%s-%s-group", systemName, instanceID, protocolVersion)
 
+	commissionRate := getEnvFloat("COMMISSION_RATE", defaultCommissionRate)
+
 	return &Config{
 		KafkaBroker:           getEnv("KAFKA_BROKER", "localhost:9092"),
 		RequestTopic:          getEnv("KAFKA_REQUEST_TOPIC", defaultRequestTopic),
@@ -44,6 +49,7 @@ func Load() *Config {
 		DeadLetterTopic:       getEnv("KAFKA_DLT_TOPIC", defaultDLTTopic),
 		OperatorTopic:         getEnv("KAFKA_OPERATOR_TOPIC", defaultOperatorTopic),
 		OperatorResponseTopic: getEnv("KAFKA_OPERATOR_RESPONSE_TOPIC", defaultOperatorResponseTopic),
+		CommissionRate:        commissionRate,
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
 	}
@@ -52,6 +58,15 @@ func Load() *Config {
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return fallback
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
 	}
 	return fallback
 }
