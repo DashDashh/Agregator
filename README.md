@@ -6,7 +6,8 @@
 
 - **Go 1.24** — сервис
 - **PostgreSQL 16** — хранение заказчиков, эксплуатантов и заказов
-- **Apache Kafka** — асинхронная очередь заданий для эксплуатантов
+- **Apache Kafka** — основной транспорт сообщений
+- **MQTT (Mosquitto)** — дополнительный транспорт для обмена с эксплуатантами
 - **Docker Compose** — запуск всего окружения одной командой
 
 ## Запуск
@@ -17,9 +18,26 @@ docker compose up -d --build
 
 Сервис поднимется на `http://localhost:8080`.
 
-Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем Kafka, затем агрегатор.
+## Режим транспорта
 
----
+Для обмена с эксплуатантами (`operator.requests` / `operator.responses`) режим выбирается через переменную окружения `OPERATOR_TRANSPORT`:
+
+- `kafka` — только Kafka (режим по умолчанию)
+- `both` — Kafka + MQTT одновременно
+
+> Важно: контур `aggregator.requests` / `aggregator.responses` по-прежнему работает через Kafka. Поэтому на текущей архитектуре поддерживаются именно режимы `kafka` и `both`, а не `mqtt only`.
+
+Пример для `docker-compose.yml`:
+
+```yaml
+environment:
+  OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
+```
+
+Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем Kafka, затем агрегатор. MQTT-брокер поднимается как отдельный сервис и используется агрегатором только при выборе режима `both`.
+
+> Тогда можно запускать `export OPERATOR_TRANSPORT=both && docker compose up -d --build`.
+
 
 ## API
 
@@ -107,7 +125,7 @@ POST /operators
 POST /orders
 ```
 
-> Требует существующего `customer_id`. При создании заказ автоматически отправляется эксплуатантам через Kafka (`operator.requests`).
+> Требует существующего `customer_id`. При создании заказ автоматически отправляется эксплуатантам через выбранный транспорт (`operator.requests`): Kafka либо Kafka+MQTT.
 
 **Тело запроса (delivery — по умолчанию):**
 
@@ -201,7 +219,7 @@ POST /orders/{id}/confirm-price
 ```
 
 > Пользователь принимает оферту от эксплуатанта. Агрегатор переводит заказ в статус `confirmed`
-> и отправляет эксплуатанту сообщение `confirm_price` через Kafka (`operator.requests`).
+> и отправляет эксплуатанту сообщение `confirm_price` через выбранный транспорт (`operator.requests`).
 
 **Тело запроса:**
 
@@ -246,15 +264,15 @@ POST /orders/{id}/confirm-completion
 
 **Статусы заказа:**
 
-| Статус      | Когда выставляется                                         |
-|-------------|-------------------------------------------------------------|
-| `pending`   | Заказ создан, ждёт предложений                              |
-| `searching` | Агрегатор опубликовал заказ в Kafka (`operator.requests`)   |
-| `matched`   | Эксплуатант прислал оферту цены (`price_offer`)             |
-| `confirmed` | Пользователь принял цену (`POST .../confirm-price`)         |
+| Статус                       | Когда выставляется                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pending`                        | Заказ создан, ждёт предложений                                                                                  |
+| `searching`                      | Агрегатор опубликовал заказ в `operator.requests` через выбранный транспорт            |
+| `matched`                        | Эксплуатант прислал оферту цены (`price_offer`)                                                             |
+| `confirmed`                      | Пользователь принял цену (`POST .../confirm-price`)                                                               |
 | `completed_pending_confirmation` | Оператор сообщил об успехе (`order_result` success=true), ждём подтверждения заказчика |
-| `completed` | Заказчик подтвердил выполнение (`POST .../confirm-completion`) |
-| `dispute`   | Эксплуатант сообщил о срыве (`order_result` success=false)  |
+| `completed`                      | Заказчик подтвердил выполнение (`POST .../confirm-completion`)                                              |
+| `dispute`                        | Эксплуатант сообщил о срыве (`order_result` success=false)                                                      |
 
 ---
 
@@ -275,7 +293,7 @@ OPERATOR_ID=$(curl -s -X POST http://localhost:8080/operators \
   | jq -r .id)
 echo "OPERATOR_ID=$OPERATOR_ID"
 
-# 3. Создать заказ (delivery) — уйдёт в Kafka (operator.requests)
+# 3. Создать заказ (delivery) — уйдёт в operator.requests через выбранный транспорт
 ORDER_ID=$(curl -s -X POST http://localhost:8080/orders \
   -H "Content-Type: application/json" \
   -d '{
@@ -308,7 +326,7 @@ curl -s http://localhost:8080/orders | jq
 
 ---
 
-## Kafka — форматы сообщений
+## Форматы сообщений
 
 ### Агрегатор → Эксплуатант (`<prefix>.operator.requests`)
 
@@ -425,7 +443,7 @@ curl -s http://localhost:8080/orders | jq
 
 ---
 
-## Kafka — топики
+## Топики
 
 Формат имени топика: `<prefix>.<component>.<direction>`, где
 
@@ -435,13 +453,13 @@ curl -s http://localhost:8080/orders | jq
 
 Это убирает конфликты между экземплярами систем и сразу закладывает версионирование протокола.
 
-| Топик | Направление | Кто читает |
-|-------------------------|---------------------|--------------------|
-| `<prefix>.operator.requests` | Агрегатор → Эксп. | Сервис эксплуатанта |
-| `<prefix>.operator.responses` | Эксп. → Агрегатор | Агрегатор (этот сервис) |
-| `<prefix>.aggregator.requests` | Внешние → Агрегатор | Агрегатор |
-| `<prefix>.aggregator.responses` | Агрегатор → Внешние | Внешние сервисы |
-| `<prefix>.aggregator.dead_letter` | Мусорные сообщения | — |
+| Топик                          | Направление               | Кто читает                        |
+| ----------------------------------- | ------------------------------------ | ------------------------------------------ |
+| `<prefix>.operator.requests`      | Агрегатор → Эксп.      | Сервис эксплуатанта      |
+| `<prefix>.operator.responses`     | Эксп. → Агрегатор      | Агрегатор (этот сервис) |
+| `<prefix>.aggregator.requests`    | Внешние → Агрегатор | Агрегатор                         |
+| `<prefix>.aggregator.responses`   | Агрегатор → Внешние | Внешние сервисы              |
+| `<prefix>.aggregator.dead_letter` | Мусорные сообщения  | —                                         |
 
 ---
 
