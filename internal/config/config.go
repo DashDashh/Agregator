@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -17,14 +18,25 @@ type Config struct {
 	CommissionRate        float64
 	DatabaseURL           string
 	MigrationsPath        string // путь к SQL-файлу миграции
+	OperatorTransport     string // kafka | both (MQTT только для operator.* топиков)
+
+	MQTTBroker            string
+	MQTTClientID          string
+	MQTTUsername          string
+	MQTTPassword          string
+	MQTTOperatorTopic     string
+	MQTTOperatorRespTopic string
+	MQTTQoS               byte
 }
 
 func Load() *Config {
 	const (
-		defaultProtocolVersion = "v1"
-		defaultSystemName      = "aggregator_insurer"
-		defaultInstanceID      = "local"
-		defaultCommissionRate  = 0.1
+		defaultProtocolVersion   = "v1"
+		defaultSystemName        = "aggregator_insurer"
+		defaultInstanceID        = "local"
+		defaultCommissionRate    = 0.1
+		defaultMQTTQoS           = 1
+		defaultOperatorTransport = "kafka"
 	)
 
 	protocolVersion := getEnv("KAFKA_PROTOCOL_VERSION", defaultProtocolVersion)
@@ -39,6 +51,9 @@ func Load() *Config {
 	defaultOperatorResponseTopic := topicPrefix + ".operator.responses"
 	defaultConsumerGroup := fmt.Sprintf("%s-%s-%s-group", systemName, instanceID, protocolVersion)
 
+	defaultMQTTOperatorTopic := topicPrefix + ".operator.requests"
+	defaultMQTTOperatorRespTopic := topicPrefix + ".operator.responses"
+
 	commissionRate := getEnvFloat("COMMISSION_RATE", defaultCommissionRate)
 
 	return &Config{
@@ -52,6 +67,15 @@ func Load() *Config {
 		CommissionRate:        commissionRate,
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
+		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
+
+		MQTTBroker:            getEnv("MQTT_BROKER", "mqtt:1883"),
+		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", systemName, instanceID, "mqtt")),
+		MQTTUsername:          getEnv("MQTT_USERNAME", ""),
+		MQTTPassword:          getEnv("MQTT_PASSWORD", ""),
+		MQTTOperatorTopic:     getEnv("MQTT_OPERATOR_TOPIC", defaultMQTTOperatorTopic),
+		MQTTOperatorRespTopic: getEnv("MQTT_OPERATOR_RESPONSE_TOPIC", defaultMQTTOperatorRespTopic),
+		MQTTQoS:               byte(getEnvFloat("MQTT_QOS", defaultMQTTQoS)),
 	}
 }
 
@@ -69,4 +93,29 @@ func getEnvFloat(key string, fallback float64) float64 {
 		}
 	}
 	return fallback
+}
+
+func normalizeOperatorTransport(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "", "kafka":
+		return "kafka"
+	case "both", "kafka+mqtt", "mqtt+kafka", "kafka_mqtt", "kafka-mqtt":
+		return "both"
+	default:
+		return v
+	}
+}
+
+func (c *Config) Validate() error {
+	switch c.OperatorTransport {
+	case "kafka", "both":
+		return nil
+	default:
+		return fmt.Errorf("unsupported OPERATOR_TRANSPORT=%q, allowed values: kafka, both", c.OperatorTransport)
+	}
+}
+
+func (c *Config) UseMQTTForOperators() bool {
+	return c.OperatorTransport == "both"
 }
