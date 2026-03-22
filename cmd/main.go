@@ -12,6 +12,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/internal/config"
 	"github.com/kirilltahmazidi/aggregator/internal/handler"
 	"github.com/kirilltahmazidi/aggregator/internal/kafka"
+	"github.com/kirilltahmazidi/aggregator/internal/mqtt"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 
@@ -20,8 +21,11 @@ func main() {
 	log.Println("[main] aggregator service starting")
 
 	cfg := config.Load()
-	log.Printf("[main] config: broker=%s request_topic=%s response_topic=%s",
-		cfg.KafkaBroker, cfg.RequestTopic, cfg.ResponseTopic)
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("[main] invalid config: %v", err)
+	}
+	log.Printf("[main] config: broker=%s request_topic=%s response_topic=%s operator_transport=%s",
+		cfg.KafkaBroker, cfg.RequestTopic, cfg.ResponseTopic, cfg.OperatorTransport)
 
 	// Подключаемся к PostgreSQL
 	s, err := store.New(cfg.DatabaseURL)
@@ -41,12 +45,24 @@ func main() {
 	}
 	log.Println("[main] migrations applied")
 
-	// Kafka-сервис — передаём store чтобы он мог обновлять статусы заказов
+	// Kafka-сервис — базовый транспорт для aggregator.* топиков и operator.* по умолчанию.
 	h := handler.New()
 	svc := kafka.NewService(cfg, h, s)
 
-	// HTTP-сервер для фронтенда — передаём kafka сервис как Publisher
-	apiHandler := api.NewHandler(s, svc)
+	// MQTT подключаем только если явно включён режим both.
+	publisher := api.NewMultiPublisher(svc)
+	var mqttSvc *mqtt.Service
+	if cfg.UseMQTTForOperators() {
+		mqttSvc, err = mqtt.NewService(cfg, s)
+		if err != nil {
+			log.Fatalf("[main] mqtt is required by OPERATOR_TRANSPORT=%s: %v", cfg.OperatorTransport, err)
+		}
+		publisher = api.NewMultiPublisher(svc, mqttSvc)
+		log.Println("[main] operator transport mode: kafka + mqtt")
+	} else {
+		log.Println("[main] operator transport mode: kafka only")
+	}
+	apiHandler := api.NewHandler(s, publisher, cfg.CommissionRate)
 	router := api.NewRouter(apiHandler)
 	httpServer := &http.Server{
 		Addr:    ":8080",
@@ -71,13 +87,21 @@ func main() {
 		httpServer.Shutdown(context.Background()) //nolint:errcheck
 	}()
 
-	// Kafka-цикл читает aggregator.requests — блокирует до остановки
-	// Параллельно запускаем consumer operator.responses (оферты и результаты)
+	// Kafka consumer operator.responses
 	go func() {
 		if err := svc.RunOperatorConsumer(ctx); err != nil && err != context.Canceled {
 			log.Printf("[main] operator consumer exited: %v", err)
 		}
 	}()
+
+	// MQTT consumer operator.responses (если mqtt доступен)
+	if mqttSvc != nil {
+		go func() {
+			if err := mqttSvc.RunOperatorConsumer(ctx); err != nil && err != context.Canceled {
+				log.Printf("[main] mqtt operator consumer exited: %v", err)
+			}
+		}()
+	}
 
 	if err := svc.Run(ctx); err != nil && err != context.Canceled {
 		log.Fatalf("[main] service exited with error: %v", err)

@@ -7,18 +7,18 @@ import (
 
 // Middleware
 func enableCORS(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "*") // !
-        w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-        // если это предзапрос - CORS (OPTIONS) => 200 OK
-        if r.Method == http.MethodOptions {
-            w.WriteHeader(http.StatusOK)
-            return
-        }
-		
-        next.ServeHTTP(w, r)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*") // !
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		// если это предзапрос - CORS (OPTIONS) => 200 OK
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewRouter(h *Handler) http.Handler {
@@ -42,6 +42,10 @@ func NewRouter(h *Handler) http.Handler {
 			h.ConfirmPrice(w, r)
 			return
 		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/confirm-completion") {
+			h.ConfirmCompletion(w, r)
+			return
+		}
 		if r.Method == http.MethodGet {
 			h.GetOrder(w, r)
 		} else {
@@ -58,17 +62,26 @@ func NewRouter(h *Handler) http.Handler {
 		}
 	})
 
-	// Заказчики
-	mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			h.RegisterCustomer(w, r)
-		} else {
-			http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
-		}
-	})
+	    // Заказчики
+    mux.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodPost {
+            h.RegisterCustomer(w, r)
+        } else {
+            http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+        }
+    })
 
-	// Отдача статичного фронта для удобства))))
-	mux.Handle("/", http.FileServer(http.Dir("./frontend")))
+    // Получение заказчика по ID
+    mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            h.GetCustomer(w, r)
+            return
+        }
+        http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+    })
 
-	return enableCORS(mux)
+    // Отдача статичного фронта для удобства))))
+    mux.Handle("/", http.FileServer(http.Dir("./frontend")))
+
+    return enableCORS(mux)
 }

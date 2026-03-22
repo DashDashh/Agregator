@@ -83,13 +83,19 @@ func NewService(cfg *config.Config, h *handler.Handler, s *store.Store) *Service
 func (s *Service) PublishOrder(ctx context.Context, order *store.Order) error {
 	// собираем payload в формате models.CreateOrderRequest
 	payload, err := json.Marshal(models.CreateOrderRequest{
-		CustomerID:  order.CustomerID,
-		Description: order.Description,
-		Budget:      order.Budget,
-		FromLat:     order.FromLat,
-		FromLon:     order.FromLon,
-		ToLat:       order.ToLat,
-		ToLon:       order.ToLon,
+		CustomerID:     order.CustomerID,
+		Description:    order.Description,
+		Budget:         order.Budget,
+		FromLat:        order.FromLat,
+		FromLon:        order.FromLon,
+		ToLat:          order.ToLat,
+		ToLon:          order.ToLon,
+		MissionType:    order.MissionType,
+		SecurityGoals:  order.SecurityGoals,
+		TopLeftLat:     order.TopLeftLat,
+		TopLeftLon:     order.TopLeftLon,
+		BottomRightLat: order.BottomRightLat,
+		BottomRightLon: order.BottomRightLon,
 	})
 	if err != nil {
 		return err
@@ -206,7 +212,7 @@ func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message)
 			log.Printf("[kafka] order_result: invalid payload: %v", err)
 			return
 		}
-		newStatus := store.StatusCompleted
+		newStatus := store.StatusCompletedPending
 		if !p.Success {
 			newStatus = store.StatusDispute
 		}

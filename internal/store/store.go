@@ -7,34 +7,44 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/lib/pq"
 )
 
 // OrderStatus — статус заказа на каждом этапе жизненного цикла
 type OrderStatus string
 
 const (
-	StatusPending   OrderStatus = "pending"   // ждёт исполнителя
-	StatusSearching OrderStatus = "searching" // идёт поиск эксплуатанта
-	StatusMatched   OrderStatus = "matched"   // исполнитель найден
-	StatusConfirmed OrderStatus = "confirmed" // контракт подписан
-	StatusCompleted OrderStatus = "completed" // заказ выполнен
-	StatusDispute   OrderStatus = "dispute"   // открыт спор
+	StatusPending          OrderStatus = "pending"                        // ждёт исполнителя
+	StatusSearching        OrderStatus = "searching"                      // идёт поиск эксплуатанта
+	StatusMatched          OrderStatus = "matched"                        // исполнитель найден
+	StatusConfirmed        OrderStatus = "confirmed"                      // контракт подписан
+	StatusCompletedPending OrderStatus = "completed_pending_confirmation" // оператор сообщил об успехе, ждём подтверждения заказчика
+	StatusCompleted        OrderStatus = "completed"                      // заказ выполнен
+	StatusDispute          OrderStatus = "dispute"                        // открыт спор
 )
 
 // Order — запись о заказе
 type Order struct {
-	ID           string      `json:"id"`
-	CustomerID   string      `json:"customer_id"`
-	Description  string      `json:"description"`
-	Budget       float64     `json:"budget"`
-	FromLat      float64     `json:"from_lat"`
-	FromLon      float64     `json:"from_lon"`
-	ToLat        float64     `json:"to_lat"`
-	ToLon        float64     `json:"to_lon"`
-	Status       OrderStatus `json:"status"`
-	OperatorID   string      `json:"operator_id,omitempty"`   // заполняется когда эксплуатант даёт оферту
-	OfferedPrice float64     `json:"offered_price,omitempty"` // цена от эксплуатанта
-	CreatedAt    time.Time   `json:"created_at"`
+	ID               string      `json:"id"`
+	CustomerID       string      `json:"customer_id"`
+	Description      string      `json:"description"`
+	Budget           float64     `json:"budget"`
+	FromLat          float64     `json:"from_lat"`
+	FromLon          float64     `json:"from_lon"`
+	ToLat            float64     `json:"to_lat"`
+	ToLon            float64     `json:"to_lon"`
+	Status           OrderStatus `json:"status"`
+	OperatorID       string      `json:"operator_id,omitempty"`   // заполняется когда эксплуатант даёт оферту
+	OfferedPrice     float64     `json:"offered_price,omitempty"` // цена от эксплуатанта
+	MissionType      string      `json:"mission_type"`
+	SecurityGoals    []string    `json:"security_goals,omitempty"`
+	TopLeftLat       float64     `json:"top_left_lat,omitempty"`
+	TopLeftLon       float64     `json:"top_left_lon,omitempty"`
+	BottomRightLat   float64     `json:"bottom_right_lat,omitempty"`
+	BottomRightLon   float64     `json:"bottom_right_lon,omitempty"`
+	CommissionAmount float64     `json:"commission_amount,omitempty"`
+	OperatorAmount   float64     `json:"operator_amount,omitempty"`
+	CreatedAt        time.Time   `json:"created_at"`
 }
 
 // Operator — зарегистрированный эксплуатант
@@ -91,24 +101,52 @@ func (s *Store) RunMigrations(sqlText string) error {
 func (s *Store) SaveOrder(o *Order) error {
 	// ON CONFLICT (id) DO UPDATE — upsert: вставить или обновить если id уже есть
 	_, err := s.db.Exec(`
-		INSERT INTO orders (id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO orders (
+			id, customer_id, description, budget,
+			from_lat, from_lon, to_lat, to_lon,
+			status, operator_id, offered_price,
+			mission_type, security_goals,
+			top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon,
+			commission_amount, operator_amount,
+			created_at
+		)
+		VALUES ($1, $2, $3, $4,
+			$5, $6, $7, $8,
+			$9, $10, $11,
+			$12, $13,
+			$14, $15, $16, $17,
+			$18, $19,
+			$20)
 		ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
 	`, o.ID, o.CustomerID, o.Description, o.Budget,
 		o.FromLat, o.FromLon, o.ToLat, o.ToLon,
-		string(o.Status), o.OperatorID, o.OfferedPrice, o.CreatedAt)
+		string(o.Status), o.OperatorID, o.OfferedPrice,
+		o.MissionType, pq.Array(o.SecurityGoals),
+		o.TopLeftLat, o.TopLeftLon, o.BottomRightLat, o.BottomRightLon,
+		o.CommissionAmount, o.OperatorAmount,
+		o.CreatedAt)
 	return err
 }
 
 func (s *Store) GetOrder(id string) (*Order, bool) {
 	o := &Order{}
 	err := s.db.QueryRow(`
-		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at
+		SELECT id, customer_id, description, budget,
+			from_lat, from_lon, to_lat, to_lon,
+			status, operator_id, offered_price,
+			mission_type, security_goals,
+			top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon,
+			commission_amount, operator_amount,
+			created_at
 		FROM orders WHERE id = $1
 	`, id).Scan(
 		&o.ID, &o.CustomerID, &o.Description, &o.Budget,
 		&o.FromLat, &o.FromLon, &o.ToLat, &o.ToLon,
-		&o.Status, &o.OperatorID, &o.OfferedPrice, &o.CreatedAt,
+		&o.Status, &o.OperatorID, &o.OfferedPrice,
+		&o.MissionType, pq.Array(&o.SecurityGoals),
+		&o.TopLeftLat, &o.TopLeftLon, &o.BottomRightLat, &o.BottomRightLon,
+		&o.CommissionAmount, &o.OperatorAmount,
+		&o.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, false // не нашли — возвращаем false как раньше
@@ -121,7 +159,13 @@ func (s *Store) GetOrder(id string) (*Order, bool) {
 
 func (s *Store) ListOrders() []*Order {
 	rows, err := s.db.Query(`
-		SELECT id, customer_id, description, budget, from_lat, from_lon, to_lat, to_lon, status, operator_id, offered_price, created_at
+		SELECT id, customer_id, description, budget,
+			from_lat, from_lon, to_lat, to_lon,
+			status, operator_id, offered_price,
+			mission_type, security_goals,
+			top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon,
+			commission_amount, operator_amount,
+			created_at
 		FROM orders ORDER BY created_at DESC
 	`)
 	if err != nil {
@@ -135,7 +179,11 @@ func (s *Store) ListOrders() []*Order {
 		if err := rows.Scan(
 			&o.ID, &o.CustomerID, &o.Description, &o.Budget,
 			&o.FromLat, &o.FromLon, &o.ToLat, &o.ToLon,
-			&o.Status, &o.OperatorID, &o.OfferedPrice, &o.CreatedAt,
+			&o.Status, &o.OperatorID, &o.OfferedPrice,
+			&o.MissionType, pq.Array(&o.SecurityGoals),
+			&o.TopLeftLat, &o.TopLeftLon, &o.BottomRightLat, &o.BottomRightLon,
+			&o.CommissionAmount, &o.OperatorAmount,
+			&o.CreatedAt,
 		); err != nil {
 			continue
 		}
@@ -151,6 +199,30 @@ func (s *Store) UpdateOrderStatus(id string, status OrderStatus) bool {
 	}
 	n, _ := res.RowsAffected() // сколько строк было изменено
 	return n > 0               // если 0 — такого заказа нет
+}
+
+// ConfirmPrice фиксирует выбор оператора, финальную цену и комиссию.
+func (s *Store) ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmount float64) bool {
+	operatorAmount := acceptedPrice - commissionAmount
+	res, err := s.db.Exec(
+		`UPDATE orders SET operator_id = $1, offered_price = $2, commission_amount = $3, operator_amount = $4, status = $5 WHERE id = $6`,
+		operatorID, acceptedPrice, commissionAmount, operatorAmount, string(StatusConfirmed), id,
+	)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+// ConfirmCompletion фиксирует подтверждение выполнения заказчиком.
+func (s *Store) ConfirmCompletion(id string) bool {
+	res, err := s.db.Exec(`UPDATE orders SET status = $1 WHERE id = $2`, string(StatusCompleted), id)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 // SetOperatorOffer сохраняет оферту от эксплуатанта: его ID и предложенную цену.
@@ -190,7 +262,6 @@ func (s *Store) GetOperator(id string) (*Operator, bool) {
 }
 
 // Customers
-
 func (s *Store) SaveCustomer(c *Customer) error {
 	_, err := s.db.Exec(`
 		INSERT INTO customers (id, name, email, phone)

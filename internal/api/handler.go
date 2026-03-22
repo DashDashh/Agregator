@@ -21,12 +21,13 @@ type Publisher interface {
 
 // HTTP-обработчики REST API для фронтенда
 type Handler struct {
-	store     *store.Store
-	publisher Publisher // отправляет заказы эксплуатантам через Kafka
+	store          *store.Store
+	publisher      Publisher // отправляет заказы эксплуатантам через Kafka
+	commissionRate float64
 }
 
-func NewHandler(s *store.Store, p Publisher) *Handler {
-	return &Handler{store: s, publisher: p}
+func NewHandler(s *store.Store, p Publisher, commissionRate float64) *Handler {
+	return &Handler{store: s, publisher: p, commissionRate: commissionRate}
 }
 
 // проверка что сервис жив
@@ -49,13 +50,19 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 //		}
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CustomerID  string  `json:"customer_id"`
-		Description string  `json:"description"`
-		Budget      float64 `json:"budget"`
-		FromLat     float64 `json:"from_lat"`
-		FromLon     float64 `json:"from_lon"`
-		ToLat       float64 `json:"to_lat"`
-		ToLon       float64 `json:"to_lon"`
+		CustomerID     string   `json:"customer_id"`
+		Description    string   `json:"description"`
+		Budget         float64  `json:"budget"`
+		FromLat        float64  `json:"from_lat"`
+		FromLon        float64  `json:"from_lon"`
+		ToLat          float64  `json:"to_lat"`
+		ToLon          float64  `json:"to_lon"`
+		MissionType    string   `json:"mission_type"`
+		SecurityGoals  []string `json:"security_goals"`
+		TopLeftLat     float64  `json:"top_left_lat"`
+		TopLeftLon     float64  `json:"top_left_lon"`
+		BottomRightLat float64  `json:"bottom_right_lat"`
+		BottomRightLon float64  `json:"bottom_right_lon"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
@@ -65,18 +72,28 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "customer_id и description обязательны")
 		return
 	}
+	missionType := req.MissionType
+	if missionType == "" {
+		missionType = "delivery"
+	}
 
 	order := &store.Order{
-		ID:          uuid.NewString(),
-		CustomerID:  req.CustomerID,
-		Description: req.Description,
-		Budget:      req.Budget,
-		FromLat:     req.FromLat,
-		FromLon:     req.FromLon,
-		ToLat:       req.ToLat,
-		ToLon:       req.ToLon,
-		Status:      store.StatusPending,
-		CreatedAt:   time.Now(),
+		ID:             uuid.NewString(),
+		CustomerID:     req.CustomerID,
+		Description:    req.Description,
+		Budget:         req.Budget,
+		FromLat:        req.FromLat,
+		FromLon:        req.FromLon,
+		ToLat:          req.ToLat,
+		ToLon:          req.ToLon,
+		MissionType:    missionType,
+		SecurityGoals:  req.SecurityGoals,
+		TopLeftLat:     req.TopLeftLat,
+		TopLeftLon:     req.TopLeftLon,
+		BottomRightLat: req.BottomRightLat,
+		BottomRightLon: req.BottomRightLon,
+		Status:         store.StatusPending,
+		CreatedAt:      time.Now(),
 	}
 	if err := h.store.SaveOrder(order); err != nil {
 		log.Printf("[api] failed to save order: %v", err)
@@ -187,6 +204,23 @@ func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusCreated, c)
 }
 
+// GET /customers/{id} — получить данные заказчика
+func (h *Handler) GetCustomer(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/customers/")
+	if path == "" {
+		respondError(w, http.StatusBadRequest, "id заказчика не указан")
+		return
+	}
+
+	c, ok := h.store.GetCustomer(path)
+	if !ok {
+		respondError(w, http.StatusNotFound, "заказчик не найден")
+		return
+	}
+
+	respond(w, http.StatusOK, c)
+}
+
 // POST /orders/{id}/confirm-price — пользователь подтверждает цену эксплуатанта.
 // Агрегатор отправляет сообщение confirm_price эксплуатанту через Kafka (operator.requests)
 // и обновляет статус заказа на "confirmed".
@@ -219,14 +253,18 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-
-	// Сменяем статус на confirmed и отправляем цену эксплуатанту
-	h.store.UpdateOrderStatus(orderID, store.StatusConfirmed)
+	commission := req.AcceptedPrice * h.commissionRate
+	if !h.store.ConfirmPrice(orderID, req.OperatorID, req.AcceptedPrice, commission) {
+		respondError(w, http.StatusInternalServerError, "не удалось зафиксировать цену")
+		return
+	}
 
 	payload := models.ConfirmPricePayload{
-		OrderID:       orderID,
-		OperatorID:    req.OperatorID,
-		AcceptedPrice: req.AcceptedPrice,
+		OrderID:          orderID,
+		OperatorID:       req.OperatorID,
+		AcceptedPrice:    req.AcceptedPrice,
+		CommissionAmount: commission,
+		OperatorAmount:   req.AcceptedPrice - commission,
 	}
 	if err := h.publisher.PublishConfirmPrice(r.Context(), payload); err != nil {
 		log.Printf("[api] failed to publish confirm_price: %v", err)
@@ -235,10 +273,38 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[api] price confirmed order_id=%s operator=%s price=%.2f", orderID, req.OperatorID, req.AcceptedPrice)
 
 	respond(w, http.StatusOK, map[string]interface{}{
-		"order_id":       orderID,
-		"operator_id":    req.OperatorID,
-		"accepted_price": req.AcceptedPrice,
-		"status":         "confirmed",
+		"order_id":          orderID,
+		"operator_id":       req.OperatorID,
+		"accepted_price":    req.AcceptedPrice,
+		"commission_amount": commission,
+		"operator_amount":   req.AcceptedPrice - commission,
+		"status":            "confirmed",
+	})
+}
+
+// POST /orders/{id}/confirm-completion — заказчик подтверждает факт выполнения.
+func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/orders/")
+	orderID := strings.TrimSuffix(path, "/confirm-completion")
+	if orderID == "" {
+		respondError(w, http.StatusBadRequest, "id заказа не указан")
+		return
+	}
+
+	_, ok := h.store.GetOrder(orderID)
+	if !ok {
+		respondError(w, http.StatusNotFound, "заказ не найден")
+		return
+	}
+
+	if !h.store.ConfirmCompletion(orderID) {
+		respondError(w, http.StatusInternalServerError, "не удалось подтвердить выполнение")
+		return
+	}
+
+	respond(w, http.StatusOK, map[string]interface{}{
+		"order_id": orderID,
+		"status":   "completed",
 	})
 }
 

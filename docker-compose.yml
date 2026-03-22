@@ -47,15 +47,20 @@ services:
     image: confluentinc/cp-kafka:7.6.0
     depends_on:
       - kafka
+    environment:
+      KAFKA_PROTOCOL_VERSION: v1
+      KAFKA_SYSTEM_NAME: aggregator_insurer
+      KAFKA_INSTANCE_ID: local
     entrypoint: >
       bash -c "
         echo 'Waiting for Kafka...';
         sleep 10;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.requests;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic aggregator.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic operator.requests;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic operator.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic aggregator.dead-letter;
+        TOPIC_PREFIX=$${KAFKA_PROTOCOL_VERSION}.$${KAFKA_SYSTEM_NAME}.$${KAFKA_INSTANCE_ID};
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.aggregator.requests;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.aggregator.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.operator.requests;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.operator.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic $${TOPIC_PREFIX}.aggregator.dead_letter;
         echo 'Topics created.';
       "
 
@@ -69,18 +74,36 @@ services:
       kafka-init:
         condition: service_completed_successfully
     ports:
-      - "8080:8080" # REST API для фронтенда
+      - "8080:8080"
     environment:
       KAFKA_BROKER: kafka:9092
-      KAFKA_REQUEST_TOPIC: aggregator.requests
-      KAFKA_RESPONSE_TOPIC: aggregator.responses
-      KAFKA_CONSUMER_GROUP: aggregator-group
-      KAFKA_DLT_TOPIC: aggregator.dead-letter
-      KAFKA_OPERATOR_TOPIC: operator.requests
-      KAFKA_OPERATOR_RESPONSE_TOPIC: operator.responses
+      KAFKA_PROTOCOL_VERSION: v1
+      KAFKA_SYSTEM_NAME: aggregator_insurer
+      KAFKA_INSTANCE_ID: local
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
+      OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
+      MQTT_BROKER: mqtt:1883
+      MQTT_CLIENT_ID: aggregator_insurer-local-mqtt
+      MQTT_USERNAME: ""
+      MQTT_PASSWORD: ""
+      MQTT_OPERATOR_TOPIC: v1.aggregator_insurer.local.operator.requests
+      MQTT_OPERATOR_RESPONSE_TOPIC: v1.aggregator_insurer.local.operator.responses
+      MQTT_QOS: 1
     restart: on-failure
+
+  # MQTT брокер (легковесный)
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:Z
+    ports:
+      - "1883:1883"
+    healthcheck:
+      test: [ "CMD", "mosquitto_pub", "-h", "localhost", "-t", "health", "-m", "ok" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
