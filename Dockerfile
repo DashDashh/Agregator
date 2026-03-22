@@ -17,6 +17,8 @@ RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /aggregator /aggregator
 # Миграции должны быть доступны при запуске сервиса
 COPY --from=builder /app/migrations /migrations
+# Страница фронтенда
+COPY --from=builder /app/frontend /frontend
 
 # Конфигурация передаётся через переменные окружения
 ENV KAFKA_BROKER=kafka:9092 \

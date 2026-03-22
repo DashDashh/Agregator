@@ -67,5 +67,8 @@ func NewRouter(h *Handler) http.Handler {
 		}
 	})
 
+	// Отдача статичного фронта для удобства))))
+	mux.Handle("/", http.FileServer(http.Dir("./frontend")))
+
 	return enableCORS(mux)
 }
