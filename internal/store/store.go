@@ -203,11 +203,15 @@ func (s *Store) UpdateOrderStatus(id string, status OrderStatus) bool {
 
 // ConfirmPrice фиксирует выбор оператора, финальную цену и комиссию.
 func (s *Store) ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmount float64) bool {
-	operatorAmount := acceptedPrice - commissionAmount
-	res, err := s.db.Exec(
-		`UPDATE orders SET operator_id = $1, offered_price = $2, commission_amount = $3, operator_amount = $4, status = $5 WHERE id = $6`,
-		operatorID, acceptedPrice, commissionAmount, operatorAmount, string(StatusConfirmed), id,
-	)
+	if acceptedPrice <= 0 {
+		return false
+	}
+	res, err := s.db.Exec(`
+		UPDATE orders 
+		SET status = $1, offered_price = $2, commission_amount = $3 
+		WHERE id = $4 AND status = $5 AND operator_id = $6
+	`, string(StatusConfirmed), acceptedPrice, commissionAmount, id, string(StatusMatched), operatorID)
+	
 	if err != nil {
 		return false
 	}
@@ -217,7 +221,12 @@ func (s *Store) ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmo
 
 // ConfirmCompletion фиксирует подтверждение выполнения заказчиком.
 func (s *Store) ConfirmCompletion(id string) bool {
-	res, err := s.db.Exec(`UPDATE orders SET status = $1 WHERE id = $2`, string(StatusCompleted), id)
+	res, err := s.db.Exec(`
+		UPDATE orders 
+		SET status = $1 
+		WHERE id = $2 AND status = $3
+	`, string(StatusCompleted), id, string(StatusCompletedPending))
+	
 	if err != nil {
 		return false
 	}
@@ -226,12 +235,35 @@ func (s *Store) ConfirmCompletion(id string) bool {
 }
 
 // SetOperatorOffer сохраняет оферту от эксплуатанта: его ID и предложенную цену.
-// Вызывается из Kafka consumer когда приходит сообщение price_offer.
 func (s *Store) SetOperatorOffer(orderID, operatorID string, price float64) bool {
-	res, err := s.db.Exec(
-		`UPDATE orders SET operator_id = $1, offered_price = $2, status = $3 WHERE id = $4`,
-		operatorID, price, string(StatusMatched), orderID,
-	)
+	if price <= 0 {
+		return false
+	}
+	res, err := s.db.Exec(`
+		UPDATE orders 
+		SET status = $1, operator_id = $2, offered_price = $3 
+		WHERE id = $4 AND status = $5
+	`, string(StatusMatched), operatorID, price, orderID, string(StatusSearching))
+	
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+// ProcessOrderResult обрабатывает результат выполнения заказа от оператора
+func (s *Store) ProcessOrderResult(orderID string, success bool) bool {
+	targetStatus := StatusDispute
+	if success {
+		targetStatus = StatusCompletedPending
+	}
+	res, err := s.db.Exec(`
+		UPDATE orders 
+		SET status = $1 
+		WHERE id = $2 AND status = $3
+	`, string(targetStatus), orderID, string(StatusConfirmed))
+	
 	if err != nil {
 		return false
 	}

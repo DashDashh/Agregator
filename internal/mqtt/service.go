@@ -166,14 +166,10 @@ func (s *Service) processOperatorMessage(data []byte) {
 			log.Printf("[mqtt] order_result invalid payload: %v", err)
 			return
 		}
-		newStatus := store.StatusCompletedPending
-		if !p.Success {
-			newStatus = store.StatusDispute
-		}
-		if s.store.UpdateOrderStatus(p.OrderID, newStatus) {
-			log.Printf("[mqtt] order_result applied order_id=%s success=%v new_status=%s", p.OrderID, p.Success, newStatus)
+		if s.store.ProcessOrderResult(p.OrderID, p.Success) {
+			log.Printf("[mqtt] order_result applied order_id=%s success=%v", p.OrderID, p.Success)
 		} else {
-			log.Printf("[mqtt] order_result: order not found order_id=%s", p.OrderID)
+			log.Printf("[mqtt] order_result: ignored or not found order_id=%s (invalid state transition)", p.OrderID)
 		}
 	default:
 		// игнорируем неизвестные типы сообщений

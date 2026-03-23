@@ -212,16 +212,11 @@ func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message)
 			log.Printf("[kafka] order_result: invalid payload: %v", err)
 			return
 		}
+		
 		if s.store.ProcessOrderResult(p.OrderID, p.Success) {
 			log.Printf("[kafka] order_result applied order_id=%s success=%v", p.OrderID, p.Success)
 		} else {
 			log.Printf("[kafka] order_result: ignored or not found order_id=%s (invalid state transition)", p.OrderID)
-		}
-
-	default:
-		log.Printf("[kafka] operator consumer: unknown message type=%s", req.Type)
-	}
-}
 
 func (s *Service) Run(ctx context.Context) error {
 	log.Printf("[kafka] starting consumer loop on topic=%s", s.reader.Config().Topic)

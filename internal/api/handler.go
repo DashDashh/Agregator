@@ -255,7 +255,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 	}
 	commission := req.AcceptedPrice * h.commissionRate
 	if !h.store.ConfirmPrice(orderID, req.OperatorID, req.AcceptedPrice, commission) {
-		respondError(w, http.StatusInternalServerError, "не удалось зафиксировать цену")
+		respondError(w, http.StatusBadRequest, "недопустимое состояние заказа или неверный оператор/цена")
 		return
 	}
 
@@ -298,7 +298,7 @@ func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !h.store.ConfirmCompletion(orderID) {
-		respondError(w, http.StatusInternalServerError, "не удалось подтвердить выполнение")
+		respondError(w, http.StatusBadRequest, "недопустимое состояние: заказ еще не выполнен оператором")
 		return
 	}
 
