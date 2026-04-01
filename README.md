@@ -25,7 +25,7 @@ docker compose up -d --build
 - `kafka` — только Kafka (режим по умолчанию)
 - `both` — Kafka + MQTT одновременно
 
-> Важно: контур `aggregator.requests` / `aggregator.responses` по-прежнему работает через Kafka. Поэтому на текущей архитектуре поддерживаются именно режимы `kafka` и `both`, а не `mqtt only`.
+> Важно: контур `requests` / `responses` внутри префикса сервиса по-прежнему работает через Kafka. Поэтому на текущей архитектуре поддерживаются именно режимы `kafka` и `both`, а не `mqtt only`.
 
 Пример для `docker-compose.yml`:
 
@@ -445,21 +445,38 @@ curl -s http://localhost:8080/orders | jq
 
 ## Топики
 
-Формат имени топика: `<prefix>.<component>.<direction>`, где
+Формат имени топика: `<prefix>.<назначение>`, где
 
-- `<prefix> = <protocol_version>.<system_name>.<instance_id>`
-- по умолчанию: `v1.aggregator_insurer.local`
+- `<prefix> = <protocol_version>.<namespace>.<instance_id>.<service_name>`
+- по умолчанию: `v1.Agregator.local.agregator_service`
 - `instance_id` — конкретный ID стенда/команды (например `team42`, `dev-kirill`, `prod-eu1`), чтобы топики не конфликтовали
+
+Пример с `instance_id=123`:
+
+- `v1.Agregator.123.agregator_service.operator.requests`
+- `v1.Agregator.123.agregator_service.operator.responses`
+- `v1.Agregator.123.agregator_service.requests`
+- `v1.Agregator.123.agregator_service.responses`
+- `v1.Agregator.123.agregator_service.dead_letter`
+
+Параметры, из которых собирается префикс:
+
+- `KAFKA_PROTOCOL_VERSION` (по умолчанию `v1`)
+- `KAFKA_NAMESPACE` (по умолчанию `Agregator`)
+- `KAFKA_INSTANCE_ID` (по умолчанию `local`)
+- `KAFKA_SERVICE_NAME` (по умолчанию `agregator_service`)
+
+Совместимость: если `KAFKA_NAMESPACE` не задан, сервис использует `KAFKA_SYSTEM_NAME` как fallback.
 
 Это убирает конфликты между экземплярами систем и сразу закладывает версионирование протокола.
 
 | Топик                          | Направление               | Кто читает                        |
 | ----------------------------------- | ------------------------------------ | ------------------------------------------ |
-| `<prefix>.operator.requests`      | Агрегатор → Эксп.      | Сервис эксплуатанта      |
-| `<prefix>.operator.responses`     | Эксп. → Агрегатор      | Агрегатор (этот сервис) |
-| `<prefix>.aggregator.requests`    | Внешние → Агрегатор | Агрегатор                         |
-| `<prefix>.aggregator.responses`   | Агрегатор → Внешние | Внешние сервисы              |
-| `<prefix>.aggregator.dead_letter` | Мусорные сообщения  | —                                         |
+| `<prefix>.operator.requests`  | Агрегатор → Эксп.      | Сервис эксплуатанта      |
+| `<prefix>.operator.responses` | Эксп. → Агрегатор      | Агрегатор (этот сервис) |
+| `<prefix>.requests`           | Внешние → Агрегатор | Агрегатор                         |
+| `<prefix>.responses`          | Агрегатор → Внешние | Внешние сервисы              |
+| `<prefix>.dead_letter`        | Мусорные сообщения  | —                                         |
 
 ---
 
