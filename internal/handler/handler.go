@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
@@ -18,9 +19,9 @@ func New() *Handler {
 
 // Handle — основная точка диспетчеризации: по типу сообщения вызывает нужный обработчик
 func (h *Handler) Handle(req models.Request) models.Response {
-	log.Printf("[handler] processing request_id=%s type=%s", req.RequestID, req.Type)
+	log.Printf("[handler] processing correlation_id=%s action=%s", req.GetCorrelationID(), req.Action)
 
-	switch req.Type {
+	switch req.Action {
 	case models.MsgRegisterOperator:
 		return h.registerOperator(req)
 	case models.MsgRegisterCustomer:
@@ -40,7 +41,7 @@ func (h *Handler) Handle(req models.Request) models.Response {
 	case models.MsgGetAnalytics:
 		return h.getAnalytics(req)
 	default:
-		return errResponse(req, fmt.Sprintf("unknown message type: %s", req.Type))
+		return errResponse(req, fmt.Sprintf("unknown action: %s", req.Action))
 	}
 }
 
@@ -197,19 +198,23 @@ func (h *Handler) getAnalytics(req models.Request) models.Response {
 
 func okResponse(req models.Request, payload interface{}) models.Response {
 	return models.Response{
-		RequestID: req.RequestID,
-		Type:      req.Type,
-		Status:    models.StatusOK,
-		Payload:   payload,
+		Action:        models.ResponseAction,
+		Payload:       payload,
+		Sender:        models.DefaultSender,
+		CorrelationID: req.GetCorrelationID(),
+		Success:       true,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }
 
 func errResponse(req models.Request, msg string) models.Response {
-	log.Printf("[handler] error request_id=%s: %s", req.RequestID, msg)
+	log.Printf("[handler] error correlation_id=%s: %s", req.GetCorrelationID(), msg)
 	return models.Response{
-		RequestID: req.RequestID,
-		Type:      req.Type,
-		Status:    models.StatusError,
-		Error:     msg,
+		Action:        models.ResponseAction,
+		Sender:        models.DefaultSender,
+		CorrelationID: req.GetCorrelationID(),
+		Success:       false,
+		Error:         msg,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
 	}
 }

@@ -78,9 +78,10 @@ func (s *Service) PublishOrder(_ context.Context, order *store.Order) error {
 	}
 
 	req := models.Request{
-		RequestID: order.ID,
-		Type:      models.MsgCreateOrder,
-		Payload:   payload,
+		Action:        models.MsgCreateOrder,
+		Payload:       payload,
+		Sender:        models.DefaultSender,
+		CorrelationID: order.ID,
 	}
 	data, err := json.Marshal(req)
 	if err != nil {
@@ -103,9 +104,10 @@ func (s *Service) PublishConfirmPrice(_ context.Context, payload models.ConfirmP
 		return err
 	}
 	req := models.Request{
-		RequestID: payload.OrderID,
-		Type:      models.MsgConfirmPrice,
-		Payload:   json.RawMessage(data),
+		Action:        models.MsgConfirmPrice,
+		Payload:       json.RawMessage(data),
+		Sender:        models.DefaultSender,
+		CorrelationID: payload.OrderID,
 	}
 	msgBytes, err := json.Marshal(req)
 	if err != nil {
@@ -148,7 +150,7 @@ func (s *Service) processOperatorMessage(data []byte) {
 		return
 	}
 
-	switch req.Type {
+	switch req.Action {
 	case models.MsgPriceOffer:
 		var p models.PriceOfferPayload
 		if err := json.Unmarshal(req.Payload, &p); err != nil {

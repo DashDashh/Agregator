@@ -1,6 +1,9 @@
 package models
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // MessageType — тип операции (ОФ1–ОФ9 из ТЗ С6)
 type MessageType string
@@ -38,30 +41,72 @@ const (
 	MsgConfirmPrice MessageType = "confirm_price"
 )
 
+const (
+	DefaultSender              = "agregator"
+	ResponseAction MessageType = "response"
+)
+
 // Входящий конверт
-// Request — сообщение, которое агрегатор читает из топика aggregator.requests
+// Request — сообщение в формате SystemBus: action/payload/sender/correlation_id/reply_to/timestamp.
 type Request struct {
-	RequestID string          `json:"request_id"` //уникальный ID
-	Type      MessageType     `json:"type"`       //тип операции
-	Payload   json.RawMessage `json:"payload"`    //сами данные
+	Action        MessageType     `json:"action"`
+	Payload       json.RawMessage `json:"payload"`
+	Sender        string          `json:"sender,omitempty"`
+	CorrelationID string          `json:"correlation_id,omitempty"`
+	ReplyTo       string          `json:"reply_to,omitempty"`
+	Timestamp     string          `json:"timestamp,omitempty"`
+}
+
+func (r *Request) normalize() {
+	if r.Timestamp == "" {
+		r.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+}
+
+func (r *Request) GetCorrelationID() string {
+	return r.CorrelationID
+}
+
+func (r *Request) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		Action        MessageType     `json:"action"`
+		Type          MessageType     `json:"type"`
+		Payload       json.RawMessage `json:"payload"`
+		Sender        string          `json:"sender"`
+		CorrelationID string          `json:"correlation_id"`
+		RequestID     string          `json:"request_id"`
+		ReplyTo       string          `json:"reply_to"`
+		Timestamp     string          `json:"timestamp"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Action = aux.Action
+	if r.Action == "" {
+		r.Action = aux.Type
+	}
+	r.Payload = aux.Payload
+	r.Sender = aux.Sender
+	r.CorrelationID = aux.CorrelationID
+	if r.CorrelationID == "" {
+		r.CorrelationID = aux.RequestID
+	}
+	r.ReplyTo = aux.ReplyTo
+	r.Timestamp = aux.Timestamp
+	r.normalize()
+	return nil
 }
 
 // Исходящий конверт
-
-type ResponseStatus string
-
-const (
-	StatusOK    ResponseStatus = "ok"
-	StatusError ResponseStatus = "error"
-)
-
-// Response — сообщение, которое агрегатор пишет в топик aggregator.responses
+// Response — ответ в формате SDK: action=response + payload/sender/correlation_id/success.
 type Response struct {
-	RequestID string         `json:"request_id"`        // тот же ID
-	Type      MessageType    `json:"type"`              // тот же тип
-	Status    ResponseStatus `json:"status"`            // ok или error
-	Payload   interface{}    `json:"payload,omitempty"` //результат
-	Error     string         `json:"error,omitempty"`   // текст ошибки, если что-то пошло не так
+	Action        MessageType `json:"action"`
+	Payload       interface{} `json:"payload,omitempty"`
+	Sender        string      `json:"sender"`
+	CorrelationID string      `json:"correlation_id,omitempty"`
+	Success       bool        `json:"success"`
+	Error         string      `json:"error,omitempty"`
+	Timestamp     string      `json:"timestamp"`
 }
 
 // Payload-модели ОФ1

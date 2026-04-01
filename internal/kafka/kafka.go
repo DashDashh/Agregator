@@ -103,9 +103,10 @@ func (s *Service) PublishOrder(ctx context.Context, order *store.Order) error {
 
 	// оборачиваем в стандартный конверт Request — чтобы формат совпадал с остальными сообщениями
 	req := models.Request{
-		RequestID: order.ID, // используем ID заказа как ID запроса — связь между HTTP и Kafka
-		Type:      models.MsgCreateOrder,
-		Payload:   payload,
+		Action:        models.MsgCreateOrder,
+		Payload:       payload,
+		Sender:        models.DefaultSender,
+		CorrelationID: order.ID,
 	}
 
 	data, err := json.Marshal(req)
@@ -134,9 +135,10 @@ func (s *Service) PublishConfirmPrice(ctx context.Context, payload models.Confir
 	}
 
 	req := models.Request{
-		RequestID: payload.OrderID,
-		Type:      models.MsgConfirmPrice,
-		Payload:   json.RawMessage(data),
+		Action:        models.MsgConfirmPrice,
+		Payload:       json.RawMessage(data),
+		Sender:        models.DefaultSender,
+		CorrelationID: payload.OrderID,
 	}
 
 	msgBytes, err := json.Marshal(req)
@@ -192,7 +194,7 @@ func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message)
 		return
 	}
 
-	switch req.Type {
+	switch req.Action {
 	case models.MsgPriceOffer:
 		var p models.PriceOfferPayload
 		if err := json.Unmarshal(req.Payload, &p); err != nil {
@@ -219,7 +221,7 @@ func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message)
 		}
 
 	default:
-		log.Printf("[kafka] operator consumer: unknown message type=%s", req.Type)
+		log.Printf("[kafka] operator consumer: unknown action=%s", req.Action)
 	}
 }
 
@@ -266,25 +268,30 @@ func (s *Service) processMessage(ctx context.Context, msg kafkago.Message) {
 
 	respBytes, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("[kafka] cannot marshal response for request_id=%s: %v", req.RequestID, err)
+		log.Printf("[kafka] cannot marshal response for correlation_id=%s: %v", req.GetCorrelationID(), err)
 		return
 	}
 
+	correlationID := req.GetCorrelationID()
+	if correlationID == "" {
+		correlationID = string(msg.Key)
+	}
+
 	out := kafkago.Message{
-		Key:   []byte(req.RequestID),
+		Key:   []byte(correlationID),
 		Value: respBytes,
 	}
 
 	if err := s.writer.WriteMessages(ctx, out); err != nil {
-		log.Printf("[kafka] failed to write response for request_id=%s: %v", req.RequestID, err)
+		log.Printf("[kafka] failed to write response for correlation_id=%s: %v", correlationID, err)
 	} else {
-		log.Printf("[kafka] response sent for request_id=%s status=%s", req.RequestID, resp.Status)
+		log.Printf("[kafka] response sent for correlation_id=%s success=%v", correlationID, resp.Success)
 	}
 
 	// Обновляем статус заказа в store — фронт увидит изменение через GET /orders/{id}
-	if req.Type == models.MsgCreateOrder && resp.Status == models.StatusOK {
-		if s.store.UpdateOrderStatus(req.RequestID, store.StatusSearching) {
-			log.Printf("[kafka] order status updated to searching order_id=%s", req.RequestID)
+	if req.Action == models.MsgCreateOrder && resp.Success {
+		if s.store.UpdateOrderStatus(correlationID, store.StatusSearching) {
+			log.Printf("[kafka] order status updated to searching order_id=%s", correlationID)
 		}
 	}
 }
