@@ -22,9 +22,9 @@ COPY --from=builder /app/frontend /frontend
 
 # Конфигурация передаётся через переменные окружения
 ENV KAFKA_BROKER=kafka:9092 \
-    KAFKA_REQUEST_TOPIC=aggregator.requests \
-    KAFKA_RESPONSE_TOPIC=aggregator.responses \
-    KAFKA_CONSUMER_GROUP=aggregator-group \
-    KAFKA_DLT_TOPIC=aggregator.dead-letter
+    KAFKA_REQUEST_TOPIC=v1.Agregator.local.agregator_service.requests \
+    KAFKA_RESPONSE_TOPIC=v1.Agregator.local.agregator_service.responses \
+    KAFKA_CONSUMER_GROUP=agregator-agregator_service-local-v1-group \
+    KAFKA_DLT_TOPIC=v1.Agregator.local.agregator_service.dead_letter
 
 ENTRYPOINT ["/aggregator"]

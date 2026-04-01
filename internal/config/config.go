@@ -32,7 +32,9 @@ type Config struct {
 func Load() *Config {
 	const (
 		defaultProtocolVersion   = "v1"
-		defaultSystemName        = "aggregator_insurer"
+		defaultNamespace         = "Agregator"
+		defaultServiceName       = "agregator_service"
+		defaultClientName        = "aggregator_insurer"
 		defaultInstanceID        = "local"
 		defaultCommissionRate    = 0.1
 		defaultMQTTQoS           = 1
@@ -40,16 +42,17 @@ func Load() *Config {
 	)
 
 	protocolVersion := getEnv("KAFKA_PROTOCOL_VERSION", defaultProtocolVersion)
-	systemName := getEnv("KAFKA_SYSTEM_NAME", defaultSystemName)
+	namespace := getEnv("KAFKA_NAMESPACE", getEnv("KAFKA_SYSTEM_NAME", defaultNamespace))
+	serviceName := getEnv("KAFKA_SERVICE_NAME", defaultServiceName)
 	instanceID := getEnv("KAFKA_INSTANCE_ID", defaultInstanceID)
 
-	topicPrefix := fmt.Sprintf("%s.%s.%s", protocolVersion, systemName, instanceID)
-	defaultRequestTopic := topicPrefix + ".aggregator.requests"
-	defaultResponseTopic := topicPrefix + ".aggregator.responses"
-	defaultDLTTopic := topicPrefix + ".aggregator.dead_letter"
+	topicPrefix := fmt.Sprintf("%s.%s.%s.%s", protocolVersion, namespace, instanceID, serviceName)
+	defaultRequestTopic := topicPrefix + ".requests"
+	defaultResponseTopic := topicPrefix + ".responses"
+	defaultDLTTopic := topicPrefix + ".dead_letter"
 	defaultOperatorTopic := topicPrefix + ".operator.requests"
 	defaultOperatorResponseTopic := topicPrefix + ".operator.responses"
-	defaultConsumerGroup := fmt.Sprintf("%s-%s-%s-group", systemName, instanceID, protocolVersion)
+	defaultConsumerGroup := fmt.Sprintf("%s-%s-%s-%s-group", strings.ToLower(namespace), strings.ToLower(serviceName), instanceID, protocolVersion)
 
 	defaultMQTTOperatorTopic := topicPrefix + ".operator.requests"
 	defaultMQTTOperatorRespTopic := topicPrefix + ".operator.responses"
@@ -70,7 +73,7 @@ func Load() *Config {
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
 
 		MQTTBroker:            getEnv("MQTT_BROKER", "mqtt:1883"),
-		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", systemName, instanceID, "mqtt")),
+		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", defaultClientName, instanceID, "mqtt")),
 		MQTTUsername:          getEnv("MQTT_USERNAME", ""),
 		MQTTPassword:          getEnv("MQTT_PASSWORD", ""),
 		MQTTOperatorTopic:     getEnv("MQTT_OPERATOR_TOPIC", defaultMQTTOperatorTopic),
