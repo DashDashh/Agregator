@@ -1,4 +1,4 @@
-# Agregator Insurer
+# Agregator
 
 Агрегатор страховых заявок на доставку дронами.
 
@@ -25,7 +25,7 @@ docker compose up -d --build
 - `kafka` — только Kafka (режим по умолчанию)
 - `both` — Kafka + MQTT одновременно
 
-> Важно: контур `requests` / `responses` внутри префикса сервиса по-прежнему работает через Kafka. Поэтому на текущей архитектуре поддерживаются именно режимы `kafka` и `both`, а не `mqtt only`.
+> Важно: системный входной топик и компонентные топики формируются по правилам `systems.*` и `components.*`. Для изоляции нескольких экземпляров используется `SYSTEM_NAMESPACE`, который автоматически добавляется префиксом ко всем системным и компонентным топикам.
 
 Пример для `docker-compose.yml`:
 
@@ -37,7 +37,6 @@ environment:
 Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем Kafka, затем агрегатор. MQTT-брокер поднимается как отдельный сервис и используется агрегатором только при выборе режима `both`.
 
 > Тогда можно запускать `export OPERATOR_TRANSPORT=both && docker compose up -d --build`.
-
 
 ## API
 
@@ -328,24 +327,45 @@ curl -s http://localhost:8080/orders | jq
 
 ## Форматы сообщений
 
+В межсистемном взаимодействии отправитель публикует сообщение в системный топик получателя (`systems.<system_name>`) и передаёт нужное действие в поле верхнего уровня `action`. Маршрутизацию `action -> component topic` выполняет gateway системы.
+
 ### Агрегатор → Эксплуатант (`<prefix>.operator.requests`)
 
 Все сообщения завёрнуты в стандартный конверт:
 
 ```json
 {
-  "request_id": "<order_id>",
-  "type": "<тип>",
-  "payload": { ... }
+  "action": "<тип_действия>",
+  "payload": { ... },
+  "sender": "agregator",
+  "correlation_id": "<id_корреляции>",
+  "reply_to": "<optional_reply_topic>",
+  "timestamp": "2026-04-01T12:00:00Z"
 }
 ```
+
+Формат ответа (gateway/component -> отправитель):
+
+```json
+{
+  "action": "response",
+  "payload": { ... },
+  "sender": "agregator",
+  "correlation_id": "<id_корреляции_исходного_запроса>",
+  "success": true,
+  "timestamp": "2026-04-01T12:00:01Z"
+}
+```
+
+При ошибке: `"success": false` и поле `"error": "..."`.
 
 #### `create_order` — новый заказ (отправляется при `POST /orders`)
 
 ```json
 {
-  "request_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "type": "create_order",
+  "action": "create_order",
+  "sender": "agregator",
+  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
   "payload": {
     "customer_id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
     "description": "Доставить документы из офиса на склад",
@@ -368,8 +388,9 @@ curl -s http://localhost:8080/orders | jq
 
 ```json
 {
-  "request_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "type": "confirm_price",
+  "action": "confirm_price",
+  "sender": "agregator",
+  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
   "payload": {
     "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
     "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
@@ -391,8 +412,9 @@ curl -s http://localhost:8080/orders | jq
 
 ```json
 {
-  "request_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "type": "price_offer",
+  "action": "price_offer",
+  "sender": "operator_service",
+  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
   "payload": {
     "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
     "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
@@ -413,8 +435,9 @@ curl -s http://localhost:8080/orders | jq
 
 ```json
 {
-  "request_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "type": "order_result",
+  "action": "order_result",
+  "sender": "operator_service",
+  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
   "payload": {
     "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
     "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
@@ -429,8 +452,9 @@ curl -s http://localhost:8080/orders | jq
 
 ```json
 {
-  "request_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "type": "order_result",
+  "action": "order_result",
+  "sender": "operator_service",
+  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
   "payload": {
     "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
     "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
@@ -445,38 +469,43 @@ curl -s http://localhost:8080/orders | jq
 
 ## Топики
 
-Формат имени топика: `<prefix>.<назначение>`, где
+Базовые шаблоны:
 
-- `<prefix> = <protocol_version>.<namespace>.<instance_id>.<service_name>`
-- по умолчанию: `v1.Agregator.local.agregator_service`
-- `instance_id` — конкретный ID стенда/команды (например `team42`, `dev-kirill`, `prod-eu1`), чтобы топики не конфликтовали
+- `systems.<имя_системы>` — входной топик системы (слушает gateway)
+- `components.<имя_компонента>` — внутренние топики компонентов
+- `errors.dead_letters` — глобальный топик ошибок fire-and-forget
 
-Пример с `instance_id=123`:
+Префикс namespace:
 
-- `v1.Agregator.123.agregator_service.operator.requests`
-- `v1.Agregator.123.agregator_service.operator.responses`
-- `v1.Agregator.123.agregator_service.requests`
-- `v1.Agregator.123.agregator_service.responses`
-- `v1.Agregator.123.agregator_service.dead_letter`
+- если `SYSTEM_NAMESPACE` пустой: топики без префикса
+- если `SYSTEM_NAMESPACE=fleet_1`: получаем `fleet_1.systems.<...>` и `fleet_1.components.<...>`
+- `errors.dead_letters` не префиксуется
 
-Параметры, из которых собирается префикс:
+Текущие топики агрегатора в этом проекте:
 
-- `KAFKA_PROTOCOL_VERSION` (по умолчанию `v1`)
-- `KAFKA_NAMESPACE` (по умолчанию `Agregator`)
-- `KAFKA_INSTANCE_ID` (по умолчанию `local`)
-- `KAFKA_SERVICE_NAME` (по умолчанию `agregator_service`)
+- `systems.agregator`
+- `components.agregator.responses`
+- `components.agregator.operator.requests`
+- `components.agregator.operator.responses`
+- `errors.dead_letters`
 
-Совместимость: если `KAFKA_NAMESPACE` не задан, сервис использует `KAFKA_SYSTEM_NAME` как fallback.
+Пример для `SYSTEM_NAMESPACE=fleet_1`:
 
-Это убирает конфликты между экземплярами систем и сразу закладывает версионирование протокола.
+- `fleet_1.systems.agregator`
+- `fleet_1.components.agregator.responses`
+- `fleet_1.components.agregator.operator.requests`
+- `fleet_1.components.agregator.operator.responses`
+- `errors.dead_letters`
 
-| Топик                          | Направление               | Кто читает                        |
-| ----------------------------------- | ------------------------------------ | ------------------------------------------ |
-| `<prefix>.operator.requests`  | Агрегатор → Эксп.      | Сервис эксплуатанта      |
-| `<prefix>.operator.responses` | Эксп. → Агрегатор      | Агрегатор (этот сервис) |
-| `<prefix>.requests`           | Внешние → Агрегатор | Агрегатор                         |
-| `<prefix>.responses`          | Агрегатор → Внешние | Внешние сервисы              |
-| `<prefix>.dead_letter`        | Мусорные сообщения  | —                                         |
+Основная переменная окружения: `SYSTEM_NAMESPACE`.
+
+| Топик                      | Направление               | Кто читает                        |
+| ------------------------------- | ------------------------------------ | ------------------------------------------ |
+| `systems.agregator`                                   | Внешние → Агрегатор | Gateway агрегатора                 |
+| `components.agregator.responses`                      | Агрегатор → Внешние | Внешние сервисы                    |
+| `components.agregator.operator.requests`              | Агрегатор → Эксп.   | Сервис эксплуатанта                |
+| `components.agregator.operator.responses`             | Эксп. → Агрегатор   | Агрегатор (этот сервис)            |
+| `errors.dead_letters`                                 | Ошибки fire-and-forget | Мониторинг                      |
 
 ---
 

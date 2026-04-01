@@ -48,20 +48,22 @@ services:
     depends_on:
       - kafka
     environment:
-      KAFKA_PROTOCOL_VERSION: v1
-      KAFKA_NAMESPACE: Agregator
-      KAFKA_SERVICE_NAME: agregator_service
-      KAFKA_INSTANCE_ID: local
+      SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
+      SYSTEM_NAME: agregator
     entrypoint: >
       bash -c "
         echo 'Waiting for Kafka...';
         sleep 10;
-        TOPIC_PREFIX=$${KAFKA_PROTOCOL_VERSION}.$${KAFKA_NAMESPACE}.$${KAFKA_INSTANCE_ID}.$${KAFKA_SERVICE_NAME};
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.requests;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.operator.requests;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${TOPIC_PREFIX}.operator.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic $${TOPIC_PREFIX}.dead_letter;
+        NS="$${SYSTEM_NAMESPACE}";
+        NS="$${NS#.}";
+        NS="$${NS%.}";
+        PREFIX="";
+        if [ -n "$${NS}" ]; then PREFIX="$${NS}."; fi;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}systems.$${SYSTEM_NAME};
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.requests;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic errors.dead_letters;
         echo 'Topics created.';
       "
 
@@ -78,19 +80,14 @@ services:
       - "8080:8080"
     environment:
       KAFKA_BROKER: kafka:9092
-      KAFKA_PROTOCOL_VERSION: v1
-      KAFKA_NAMESPACE: Agregator
-      KAFKA_SERVICE_NAME: agregator_service
-      KAFKA_INSTANCE_ID: local
+      SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
       OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
       MQTT_BROKER: mqtt:1883
-      MQTT_CLIENT_ID: aggregator_insurer-local-mqtt
+      MQTT_CLIENT_ID: agregator-local-mqtt
       MQTT_USERNAME: ""
       MQTT_PASSWORD: ""
-      MQTT_OPERATOR_TOPIC: v1.Agregator.local.agregator_service.operator.requests
-      MQTT_OPERATOR_RESPONSE_TOPIC: v1.Agregator.local.agregator_service.operator.responses
       MQTT_QOS: 1
     restart: on-failure
 

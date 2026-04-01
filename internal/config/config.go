@@ -31,31 +31,28 @@ type Config struct {
 
 func Load() *Config {
 	const (
-		defaultProtocolVersion   = "v1"
-		defaultNamespace         = "Agregator"
-		defaultServiceName       = "agregator_service"
-		defaultClientName        = "aggregator_insurer"
-		defaultInstanceID        = "local"
+		defaultClientName        = "agregator"
+		defaultSystemName        = "agregator"
 		defaultCommissionRate    = 0.1
 		defaultMQTTQoS           = 1
 		defaultOperatorTransport = "kafka"
 	)
 
-	protocolVersion := getEnv("KAFKA_PROTOCOL_VERSION", defaultProtocolVersion)
-	namespace := getEnv("KAFKA_NAMESPACE", getEnv("KAFKA_SYSTEM_NAME", defaultNamespace))
-	serviceName := getEnv("KAFKA_SERVICE_NAME", defaultServiceName)
-	instanceID := getEnv("KAFKA_INSTANCE_ID", defaultInstanceID)
+	systemNamespace := strings.TrimSpace(getEnv("SYSTEM_NAMESPACE", ""))
+	mqttClientScope := systemNamespace
+	if mqttClientScope == "" {
+		mqttClientScope = "local"
+	}
 
-	topicPrefix := fmt.Sprintf("%s.%s.%s.%s", protocolVersion, namespace, instanceID, serviceName)
-	defaultRequestTopic := topicPrefix + ".requests"
-	defaultResponseTopic := topicPrefix + ".responses"
-	defaultDLTTopic := topicPrefix + ".dead_letter"
-	defaultOperatorTopic := topicPrefix + ".operator.requests"
-	defaultOperatorResponseTopic := topicPrefix + ".operator.responses"
-	defaultConsumerGroup := fmt.Sprintf("%s-%s-%s-%s-group", strings.ToLower(namespace), strings.ToLower(serviceName), instanceID, protocolVersion)
+	defaultRequestTopic := withSystemNamespace(systemNamespace, "systems."+defaultSystemName)
+	defaultResponseTopic := withSystemNamespace(systemNamespace, "components."+defaultSystemName+".responses")
+	defaultDLTTopic := "errors.dead_letters"
+	defaultOperatorTopic := withSystemNamespace(systemNamespace, "components."+defaultSystemName+".operator.requests")
+	defaultOperatorResponseTopic := withSystemNamespace(systemNamespace, "components."+defaultSystemName+".operator.responses")
+	defaultConsumerGroup := buildConsumerGroup(systemNamespace, defaultSystemName)
 
-	defaultMQTTOperatorTopic := topicPrefix + ".operator.requests"
-	defaultMQTTOperatorRespTopic := topicPrefix + ".operator.responses"
+	defaultMQTTOperatorTopic := defaultOperatorTopic
+	defaultMQTTOperatorRespTopic := defaultOperatorResponseTopic
 
 	commissionRate := getEnvFloat("COMMISSION_RATE", defaultCommissionRate)
 
@@ -73,13 +70,29 @@ func Load() *Config {
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
 
 		MQTTBroker:            getEnv("MQTT_BROKER", "mqtt:1883"),
-		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", defaultClientName, instanceID, "mqtt")),
+		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", defaultClientName, mqttClientScope, "mqtt")),
 		MQTTUsername:          getEnv("MQTT_USERNAME", ""),
 		MQTTPassword:          getEnv("MQTT_PASSWORD", ""),
 		MQTTOperatorTopic:     getEnv("MQTT_OPERATOR_TOPIC", defaultMQTTOperatorTopic),
 		MQTTOperatorRespTopic: getEnv("MQTT_OPERATOR_RESPONSE_TOPIC", defaultMQTTOperatorRespTopic),
 		MQTTQoS:               byte(getEnvFloat("MQTT_QOS", defaultMQTTQoS)),
 	}
+}
+
+func withSystemNamespace(systemNamespace, topic string) string {
+	if systemNamespace == "" {
+		return topic
+	}
+	return fmt.Sprintf("%s.%s", systemNamespace, topic)
+}
+
+func buildConsumerGroup(systemNamespace, systemName string) string {
+	base := strings.ToLower(strings.ReplaceAll(systemName, ".", "-"))
+	if systemNamespace == "" {
+		return base + "-group"
+	}
+	ns := strings.ToLower(strings.ReplaceAll(systemNamespace, ".", "-"))
+	return fmt.Sprintf("%s-%s-group", ns, base)
 }
 
 func getEnv(key, fallback string) string {
