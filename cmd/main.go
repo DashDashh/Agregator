@@ -10,6 +10,7 @@ import (
 
 	"github.com/kirilltahmazidi/aggregator/internal/api"
 	"github.com/kirilltahmazidi/aggregator/internal/config"
+	"github.com/kirilltahmazidi/aggregator/internal/gateway"
 	"github.com/kirilltahmazidi/aggregator/internal/handler"
 	"github.com/kirilltahmazidi/aggregator/internal/kafka"
 	"github.com/kirilltahmazidi/aggregator/internal/mqtt"
@@ -47,7 +48,8 @@ func main() {
 
 	// Kafka-сервис — базовый транспорт для aggregator.* топиков и operator.* по умолчанию.
 	h := handler.New()
-	svc := kafka.NewService(cfg, h, s)
+	gw := gateway.New(h)
+	svc := kafka.NewService(cfg, gw, s)
 
 	// MQTT подключаем только если явно включён режим both.
 	publisher := api.NewMultiPublisher(svc)

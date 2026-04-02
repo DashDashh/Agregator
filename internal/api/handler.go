@@ -72,6 +72,10 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "customer_id и description обязательны")
 		return
 	}
+	if _, ok := h.store.GetCustomer(req.CustomerID); !ok {
+		respondError(w, http.StatusNotFound, "заказчик не найден")
+		return
+	}
 	missionType := req.MissionType
 	if missionType == "" {
 		missionType = "delivery"
@@ -254,6 +258,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	commission := req.AcceptedPrice * h.commissionRate
+	operatorAmount := req.AcceptedPrice - commission
 	if !h.store.ConfirmPrice(orderID, req.OperatorID, req.AcceptedPrice, commission) {
 		respondError(w, http.StatusBadRequest, "недопустимое состояние заказа или неверный оператор/цена")
 		return
@@ -264,7 +269,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		OperatorID:       req.OperatorID,
 		AcceptedPrice:    req.AcceptedPrice,
 		CommissionAmount: commission,
-		OperatorAmount:   req.AcceptedPrice - commission,
+		OperatorAmount:   operatorAmount,
 	}
 	if err := h.publisher.PublishConfirmPrice(r.Context(), payload); err != nil {
 		log.Printf("[api] failed to publish confirm_price: %v", err)
@@ -277,7 +282,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		"operator_id":       req.OperatorID,
 		"accepted_price":    req.AcceptedPrice,
 		"commission_amount": commission,
-		"operator_amount":   req.AcceptedPrice - commission,
+		"operator_amount":   operatorAmount,
 		"status":            "confirmed",
 	})
 }

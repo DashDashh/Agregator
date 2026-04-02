@@ -38,7 +38,7 @@ func Load() *Config {
 		defaultOperatorTransport = "kafka"
 	)
 
-	systemNamespace := strings.TrimSpace(getEnv("SYSTEM_NAMESPACE", ""))
+	systemNamespace := normalizeSystemNamespace(getEnv("SYSTEM_NAMESPACE", ""))
 	mqttClientScope := systemNamespace
 	if mqttClientScope == "" {
 		mqttClientScope = "local"
@@ -84,6 +84,13 @@ func withSystemNamespace(systemNamespace, topic string) string {
 		return topic
 	}
 	return fmt.Sprintf("%s.%s", systemNamespace, topic)
+}
+
+func normalizeSystemNamespace(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, ".")
+	v = strings.TrimSuffix(v, ".")
+	return v
 }
 
 func buildConsumerGroup(systemNamespace, systemName string) string {

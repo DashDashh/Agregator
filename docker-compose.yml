@@ -85,7 +85,6 @@ services:
       MIGRATIONS_PATH: /migrations/001_init.sql
       OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
       MQTT_BROKER: mqtt:1883
-      MQTT_CLIENT_ID: agregator-local-mqtt
       MQTT_USERNAME: ""
       MQTT_PASSWORD: ""
       MQTT_QOS: 1

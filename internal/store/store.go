@@ -99,6 +99,11 @@ func (s *Store) RunMigrations(sqlText string) error {
 
 // Orders
 func (s *Store) SaveOrder(o *Order) error {
+	securityGoals := o.SecurityGoals
+	if securityGoals == nil {
+		securityGoals = []string{}
+	}
+
 	// ON CONFLICT (id) DO UPDATE — upsert: вставить или обновить если id уже есть
 	_, err := s.db.Exec(`
 		INSERT INTO orders (
@@ -121,7 +126,7 @@ func (s *Store) SaveOrder(o *Order) error {
 	`, o.ID, o.CustomerID, o.Description, o.Budget,
 		o.FromLat, o.FromLon, o.ToLat, o.ToLon,
 		string(o.Status), o.OperatorID, o.OfferedPrice,
-		o.MissionType, pq.Array(o.SecurityGoals),
+		o.MissionType, pq.Array(securityGoals),
 		o.TopLeftLat, o.TopLeftLon, o.BottomRightLat, o.BottomRightLon,
 		o.CommissionAmount, o.OperatorAmount,
 		o.CreatedAt)
@@ -206,12 +211,13 @@ func (s *Store) ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmo
 	if acceptedPrice <= 0 {
 		return false
 	}
+	operatorAmount := acceptedPrice - commissionAmount
 	res, err := s.db.Exec(`
 		UPDATE orders 
-		SET status = $1, offered_price = $2, commission_amount = $3 
-		WHERE id = $4 AND status = $5 AND operator_id = $6
-	`, string(StatusConfirmed), acceptedPrice, commissionAmount, id, string(StatusMatched), operatorID)
-	
+		SET status = $1, offered_price = $2, commission_amount = $3, operator_amount = $4
+		WHERE id = $5 AND status = $6 AND operator_id = $7
+	`, string(StatusConfirmed), acceptedPrice, commissionAmount, operatorAmount, id, string(StatusMatched), operatorID)
+
 	if err != nil {
 		return false
 	}
@@ -226,7 +232,7 @@ func (s *Store) ConfirmCompletion(id string) bool {
 		SET status = $1 
 		WHERE id = $2 AND status = $3
 	`, string(StatusCompleted), id, string(StatusCompletedPending))
-	
+
 	if err != nil {
 		return false
 	}
@@ -244,7 +250,7 @@ func (s *Store) SetOperatorOffer(orderID, operatorID string, price float64) bool
 		SET status = $1, operator_id = $2, offered_price = $3 
 		WHERE id = $4 AND status = $5
 	`, string(StatusMatched), operatorID, price, orderID, string(StatusSearching))
-	
+
 	if err != nil {
 		return false
 	}
@@ -263,7 +269,7 @@ func (s *Store) ProcessOrderResult(orderID string, success bool) bool {
 		SET status = $1 
 		WHERE id = $2 AND status = $3
 	`, string(targetStatus), orderID, string(StatusConfirmed))
-	
+
 	if err != nil {
 		return false
 	}

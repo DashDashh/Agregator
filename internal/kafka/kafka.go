@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/kirilltahmazidi/aggregator/internal/config"
-	"github.com/kirilltahmazidi/aggregator/internal/handler"
+	"github.com/kirilltahmazidi/aggregator/internal/gateway"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 	kafkago "github.com/segmentio/kafka-go"
@@ -19,11 +19,11 @@ type Service struct {
 	outWriter      *kafkago.Writer // пишет задания эксплуатантам в operator.requests
 	operatorReader *kafkago.Reader // читает ответы эксплуатантов из operator.responses
 	dlt            *kafkago.Writer // dead-letter topic для нечитаемых сообщений
-	handler        *handler.Handler
+	gateway        *gateway.Gateway
 	store          *store.Store // для обновления статусов заказов
 }
 
-func NewService(cfg *config.Config, h *handler.Handler, s *store.Store) *Service {
+func NewService(cfg *config.Config, g *gateway.Gateway, s *store.Store) *Service {
 	// читает из aggregator.requests
 	reader := kafkago.NewReader(kafkago.ReaderConfig{
 		Brokers:  []string{cfg.KafkaBroker},
@@ -73,7 +73,7 @@ func NewService(cfg *config.Config, h *handler.Handler, s *store.Store) *Service
 		outWriter:      outWriter,
 		operatorReader: operatorReader,
 		dlt:            dlt,
-		handler:        h,
+		gateway:        g,
 		store:          s,
 	}
 }
@@ -264,7 +264,7 @@ func (s *Service) processMessage(ctx context.Context, msg kafkago.Message) {
 		return
 	}
 
-	resp := s.handler.Handle(req)
+	resp := s.gateway.Route(req)
 
 	respBytes, err := json.Marshal(resp)
 	if err != nil {
