@@ -1,6 +1,8 @@
 # Go binaries
 aggregator
 /aggregator
+/gateway
+/bin/
 
 # Go build cache
 *.test
