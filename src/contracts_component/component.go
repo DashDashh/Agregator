@@ -2,11 +2,10 @@ package contracts_component
 
 import (
 	"encoding/json"
-	"log"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/response"
 )
 
 const Topic = "components.agregator.contracts"
@@ -48,10 +47,10 @@ func (h *Handler) Handle(req models.Request) (models.Response, bool) {
 func (h *Handler) concludeContract(req models.Request) models.Response {
 	var payload models.ConcludeContractRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("contracts_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.ConcludeContractResponse{
+	return response.Ok(req, models.ConcludeContractResponse{
 		ContractID: uuid.NewString(),
 		OrderID:    payload.OrderID,
 		Status:     "active",
@@ -61,10 +60,10 @@ func (h *Handler) concludeContract(req models.Request) models.Response {
 func (h *Handler) confirmExecution(req models.Request) models.Response {
 	var payload models.ConfirmExecutionRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("contracts_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.ConfirmExecutionResponse{
+	return response.Ok(req, models.ConfirmExecutionResponse{
 		ContractID: payload.ContractID,
 		Status:     "completed",
 		Message:    "contract marked as completed by customer (stub)",
@@ -74,37 +73,14 @@ func (h *Handler) confirmExecution(req models.Request) models.Response {
 func (h *Handler) createDispute(req models.Request) models.Response {
 	var payload models.CreateDisputeRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("contracts_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.CreateDisputeResponse{
+	return response.Ok(req, models.CreateDisputeResponse{
 		DisputeID:       uuid.NewString(),
 		ContractID:      payload.ContractID,
 		Status:          "dispute_opened",
 		InsurancePayout: payload.ClaimAmount,
 		Message:         "dispute registered, insurance payout initiated (stub)",
 	})
-}
-
-func okResponse(req models.Request, payload interface{}) models.Response {
-	return models.Response{
-		Action:        models.ResponseAction,
-		Payload:       payload,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       true,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
-}
-
-func errResponse(req models.Request, msg string) models.Response {
-	log.Printf("[contracts_component] error correlation_id=%s: %s", req.GetCorrelationID(), msg)
-	return models.Response{
-		Action:        models.ResponseAction,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       false,
-		Error:         msg,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
 }

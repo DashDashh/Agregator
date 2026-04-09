@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/response"
 	"github.com/kirilltahmazidi/aggregator/src/analytics_component"
 	"github.com/kirilltahmazidi/aggregator/src/contracts_component"
 	"github.com/kirilltahmazidi/aggregator/src/orders_component"
@@ -36,5 +37,5 @@ func (h *Handler) Handle(req models.Request) models.Response {
 			return resp
 		}
 	}
-	return errResponse(req, fmt.Sprintf("unknown action: %s", req.Action))
+	return response.Err("handler", req, fmt.Sprintf("unknown action: %s", req.Action))
 }

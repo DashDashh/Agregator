@@ -2,11 +2,10 @@ package orders_component
 
 import (
 	"encoding/json"
-	"log"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/response"
 )
 
 const Topic = "components.agregator.orders"
@@ -48,10 +47,10 @@ func (h *Handler) Handle(req models.Request) (models.Response, bool) {
 func (h *Handler) createOrder(req models.Request) models.Response {
 	var payload models.CreateOrderRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("orders_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.CreateOrderResponse{
+	return response.Ok(req, models.CreateOrderResponse{
 		OrderID: uuid.NewString(),
 		Status:  "pending",
 		Message: "order created, awaiting executor selection (stub)",
@@ -61,10 +60,10 @@ func (h *Handler) createOrder(req models.Request) models.Response {
 func (h *Handler) selectExecutor(req models.Request) models.Response {
 	var payload models.SelectExecutorRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("orders_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.SelectExecutorResponse{
+	return response.Ok(req, models.SelectExecutorResponse{
 		OrderID:    payload.OrderID,
 		OperatorID: payload.OperatorID,
 		Status:     "executor_selected",
@@ -74,10 +73,10 @@ func (h *Handler) selectExecutor(req models.Request) models.Response {
 func (h *Handler) autoSearchExecutor(req models.Request) models.Response {
 	var payload models.AutoSearchExecutorRequest
 	if err := json.Unmarshal(req.Payload, &payload); err != nil {
-		return errResponse(req, "invalid payload: "+err.Error())
+		return response.Err("orders_component", req, "invalid payload: "+err.Error())
 	}
 
-	return okResponse(req, models.AutoSearchExecutorResponse{
+	return response.Ok(req, models.AutoSearchExecutorResponse{
 		OrderID: payload.OrderID,
 		Candidates: []models.Candidate{
 			{
@@ -94,27 +93,4 @@ func (h *Handler) autoSearchExecutor(req models.Request) models.Response {
 			},
 		},
 	})
-}
-
-func okResponse(req models.Request, payload interface{}) models.Response {
-	return models.Response{
-		Action:        models.ResponseAction,
-		Payload:       payload,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       true,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
-}
-
-func errResponse(req models.Request, msg string) models.Response {
-	log.Printf("[orders_component] error correlation_id=%s: %s", req.GetCorrelationID(), msg)
-	return models.Response{
-		Action:        models.ResponseAction,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       false,
-		Error:         msg,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
 }
