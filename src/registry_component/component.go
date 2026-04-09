@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/response"
 )
 
 const Topic = "components.agregator.registry"
@@ -68,24 +68,10 @@ func (h *Handler) registerCustomer(req models.Request) models.Response {
 }
 
 func okResponse(req models.Request, payload interface{}) models.Response {
-	return models.Response{
-		Action:        models.ResponseAction,
-		Payload:       payload,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       true,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
+	return response.OK(req, payload)
 }
 
 func errResponse(req models.Request, msg string) models.Response {
 	log.Printf("[registry_component] error correlation_id=%s: %s", req.GetCorrelationID(), msg)
-	return models.Response{
-		Action:        models.ResponseAction,
-		Sender:        models.DefaultSender,
-		CorrelationID: req.GetCorrelationID(),
-		Success:       false,
-		Error:         msg,
-		Timestamp:     time.Now().UTC().Format(time.RFC3339Nano),
-	}
+	return response.Err(req, msg)
 }
