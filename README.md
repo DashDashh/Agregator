@@ -13,10 +13,22 @@
 ## Запуск
 
 ```bash
-docker compose up -d --build
+docker network create drones_net
+docker compose --profile kafka up -d --build
 ```
 
-Сервис поднимется на `http://localhost:8080`.
+Kafka в этом репозитории больше не поднимается: предполагается, что брокер уже доступен в общей Docker-сети `drones_net` по адресу `kafka:29092`.
+
+Сервис поднимется на `http://localhost:8081`.
+
+Для локальной разработки можно поверх основного compose подключить dev-слой с Kafka:
+
+```bash
+docker network create drones_net
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka up -d --build
+```
+
+Этот сценарий поднимет локальные `zookeeper`, `kafka` и `kafka-init`, не меняя основной `docker-compose.yml`.
 
 ## Режим транспорта
 
@@ -34,9 +46,9 @@ environment:
   OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
 ```
 
-Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем Kafka, затем агрегатор. MQTT-брокер поднимается как отдельный сервис и используется агрегатором только при выборе режима `both`.
+Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем агрегатор. Kafka должен быть поднят отдельно в той же внешней сети Docker.
 
-> Тогда можно запускать `export OPERATOR_TRANSPORT=both && docker compose up -d --build`.
+> В текущем `docker-compose.yml` MQTT-брокер тоже не поднимается, поэтому для локального compose-старта используйте Kafka-режим. Запуск выглядит так: `docker compose --profile kafka up -d --build`.
 
 ## API
 
@@ -279,21 +291,21 @@ POST /orders/{id}/confirm-completion
 
 ```bash
 # 1. Создать заказчика
-CUSTOMER_ID=$(curl -s -X POST http://localhost:8080/customers \
+CUSTOMER_ID=$(curl -s -X POST http://localhost:8081/customers \
   -H "Content-Type: application/json" \
   -d '{"name":"Иван Иванов","email":"ivan@example.com","phone":"+79001234567"}' \
   | jq -r .id)
 echo "CUSTOMER_ID=$CUSTOMER_ID"
 
 # 2. Создать эксплуатанта
-OPERATOR_ID=$(curl -s -X POST http://localhost:8080/operators \
+OPERATOR_ID=$(curl -s -X POST http://localhost:8081/operators \
   -H "Content-Type: application/json" \
   -d '{"name":"ООО Дроны","license":"LIC-001","email":"ops@example.com"}' \
   | jq -r .id)
 echo "OPERATOR_ID=$OPERATOR_ID"
 
 # 3. Создать заказ (delivery) — уйдёт в operator.requests через выбранный транспорт
-ORDER_ID=$(curl -s -X POST http://localhost:8080/orders \
+ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
   -H "Content-Type: application/json" \
   -d '{
     "customer_id":"'"'"$CUSTOMER_ID'"'"",
@@ -310,17 +322,17 @@ ORDER_ID=$(curl -s -X POST http://localhost:8080/orders \
 echo "ORDER_ID=$ORDER_ID"
 
 # 4. Подтвердить цену эксплуатанта (учитывается COMMISSION_RATE)
-curl -s -X POST http://localhost:8080/orders/$ORDER_ID/confirm-price \
+curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-price \
   -H "Content-Type: application/json" \
   -d '{"operator_id":"'"'"$OPERATOR_ID'"'"","accepted_price":4500}' | jq
 
 # 5. Подтвердить выполнение заказчиком
-curl -s -X POST http://localhost:8080/orders/$ORDER_ID/confirm-completion \
+curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-completion \
   -H "Content-Type: application/json" -d '{}' | jq
 
 # 6. Проверить заказ и список
-curl -s http://localhost:8080/orders/$ORDER_ID | jq
-curl -s http://localhost:8080/orders | jq
+curl -s http://localhost:8081/orders/$ORDER_ID | jq
+curl -s http://localhost:8081/orders | jq
 ```
 
 ---

@@ -1,107 +1,42 @@
-version: "3.9"
-
 services:
-  # PostgreSQL
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: aggregator
       POSTGRES_PASSWORD: secret
       POSTGRES_DB: aggregator
-    ports:
-      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data # данные живут между перезапусками
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U aggregator" ]
+      test: ["CMD-SHELL", "pg_isready -U aggregator"]
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - drones_net
 
-  # Kafka + Zookeeper
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.0
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    depends_on:
-      - zookeeper
-    ports:
-      - "29092:29092"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-
-  # Создание топиков при старте 
-  kafka-init:
-    image: confluentinc/cp-kafka:7.6.0
-    depends_on:
-      - kafka
-    environment:
-      SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
-      SYSTEM_NAME: agregator
-    entrypoint: >
-      bash -c "
-        echo 'Waiting for Kafka...';
-        sleep 10;
-        NS="$${SYSTEM_NAMESPACE}";
-        NS="$${NS#.}";
-        NS="$${NS%.}";
-        PREFIX="";
-        if [ -n "$${NS}" ]; then PREFIX="$${NS}."; fi;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}systems.$${SYSTEM_NAME};
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.requests;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.responses;
-        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic errors.dead_letters;
-        echo 'Topics created.';
-      "
-
-  # Сервис агрегатора
   aggregator:
     build:
       context: .
+    profiles: ["kafka"]
     depends_on:
       postgres:
         condition: service_healthy
-      kafka-init:
-        condition: service_completed_successfully
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka:29092
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
-      OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
-      MQTT_BROKER: mqtt:1883
-      MQTT_USERNAME: ""
-      MQTT_PASSWORD: ""
-      MQTT_QOS: 1
     restart: on-failure
-
-  # MQTT брокер (легковесный)
-  mqtt:
-    image: eclipse-mosquitto:2.0
-    volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:Z
-    ports:
-      - "1883:1883"
-    healthcheck:
-      test: [ "CMD", "mosquitto_pub", "-h", "localhost", "-t", "health", "-m", "ok" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - drones_net
 
 volumes:
   postgres_data:
+
+networks:
+  drones_net:
+    external: true
+    name: ${DOCKER_NETWORK:-drones_net}
