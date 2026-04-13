@@ -2,14 +2,17 @@ package kafka
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"log"
+	"os"
 
 	"github.com/kirilltahmazidi/aggregator/internal/config"
 	"github.com/kirilltahmazidi/aggregator/internal/gateway"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 	kafkago "github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/sasl/plain"
 )
 
 // Service инкапсулирует kafka reader/writer и запускает цикл обработки.
@@ -24,11 +27,15 @@ type Service struct {
 }
 
 func NewService(cfg *config.Config, g *gateway.Gateway, s *store.Store) *Service {
+	dialer := newDialer()
+	transport := newTransport(dialer)
+
 	// читает из aggregator.requests
 	reader := kafkago.NewReader(kafkago.ReaderConfig{
 		Brokers:  []string{cfg.KafkaBroker},
 		Topic:    cfg.RequestTopic,  //откуда читаем
 		GroupID:  cfg.ConsumerGroup, // имя группы
+		Dialer:   dialer,
 		MinBytes: 1,
 		MaxBytes: 10e6, // 10 MB
 		Logger:   kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/reader] "+msg, args...) }),
@@ -36,25 +43,28 @@ func NewService(cfg *config.Config, g *gateway.Gateway, s *store.Store) *Service
 
 	// пишет в aggregator.responses
 	writer := &kafkago.Writer{
-		Addr:     kafkago.TCP(cfg.KafkaBroker),
-		Topic:    cfg.ResponseTopic, //куда пишем
-		Balancer: &kafkago.LeastBytes{},
-		Logger:   kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/writer] "+msg, args...) }),
+		Addr:      kafkago.TCP(cfg.KafkaBroker),
+		Topic:     cfg.ResponseTopic, //куда пишем
+		Balancer:  &kafkago.LeastBytes{},
+		Logger:    kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/writer] "+msg, args...) }),
+		Transport: transport,
 	}
 
 	// пишет задания эксплуатантам в operator.requests
 	outWriter := &kafkago.Writer{
-		Addr:     kafkago.TCP(cfg.KafkaBroker),
-		Topic:    cfg.OperatorTopic,
-		Balancer: &kafkago.LeastBytes{},
-		Logger:   kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/out] "+msg, args...) }),
+		Addr:      kafkago.TCP(cfg.KafkaBroker),
+		Topic:     cfg.OperatorTopic,
+		Balancer:  &kafkago.LeastBytes{},
+		Logger:    kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/out] "+msg, args...) }),
+		Transport: transport,
 	}
 
 	// это кароче если пришел мусор который нельзя прочитать => кладем в отдельный топик
 	dlt := &kafkago.Writer{
-		Addr:     kafkago.TCP(cfg.KafkaBroker),
-		Topic:    cfg.DeadLetterTopic,
-		Balancer: &kafkago.LeastBytes{},
+		Addr:      kafkago.TCP(cfg.KafkaBroker),
+		Topic:     cfg.DeadLetterTopic,
+		Balancer:  &kafkago.LeastBytes{},
+		Transport: transport,
 	}
 
 	// читает ответы эксплуатантов: оферты цен и результаты выполнения
@@ -62,6 +72,7 @@ func NewService(cfg *config.Config, g *gateway.Gateway, s *store.Store) *Service
 		Brokers:  []string{cfg.KafkaBroker},
 		Topic:    cfg.OperatorResponseTopic,
 		GroupID:  cfg.ConsumerGroup + "-operator-resp",
+		Dialer:   dialer,
 		MinBytes: 1,
 		MaxBytes: 10e6,
 		Logger:   kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/operator-reader] "+msg, args...) }),
@@ -76,6 +87,37 @@ func NewService(cfg *config.Config, g *gateway.Gateway, s *store.Store) *Service
 		gateway:        g,
 		store:          s,
 	}
+}
+
+func newDialer() *kafkago.Dialer {
+	dialer := &kafkago.Dialer{}
+
+	username := os.Getenv("BROKER_USER")
+	password := os.Getenv("BROKER_PASSWORD")
+	if username == "" && password == "" {
+		return dialer
+	}
+
+	dialer.SASLMechanism = plain.Mechanism{
+		Username: username,
+		Password: password,
+	}
+	dialer.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	return dialer
+}
+
+func newTransport(dialer *kafkago.Dialer) *kafkago.Transport {
+	transport := &kafkago.Transport{}
+	if dialer == nil {
+		return transport
+	}
+
+	transport.TLS = dialer.TLS
+	transport.SASL = dialer.SASLMechanism
+	return transport
 }
 
 // PublishOrder отправляет заказ в топик operator.requests — эксплуатанты его читают.

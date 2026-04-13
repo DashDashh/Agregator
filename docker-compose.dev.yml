@@ -1,4 +1,10 @@
 services:
+  aggregator:
+    environment:
+      KAFKA_BROKER: kafka:9092
+      BROKER_USER: ${BROKER_USER:-}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
@@ -43,7 +49,7 @@ services:
         NS="$${NS#.}";
         NS="$${NS%.}";
         PREFIX='';
-        if [ -n "$${NS}" ]; then PREFIX="$${NS}."; fi;
+        if [ -n \"$${NS}\" ]; then PREFIX=\"$${NS}.\"; fi;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}systems.$${SYSTEM_NAME};
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.responses;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.requests;
