@@ -102,8 +102,11 @@ func newDialer() *kafkago.Dialer {
 		Username: username,
 		Password: password,
 	}
-	dialer.TLS = &tls.Config{
-		MinVersion: tls.VersionTLS12,
+
+	if os.Getenv("KAFKA_TLS_ENABLED") == "true" {
+		dialer.TLS = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	return dialer

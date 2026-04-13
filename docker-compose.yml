@@ -28,6 +28,7 @@ services:
       KAFKA_BROKER: kafka:29092
       BROKER_USER: ${BROKER_USER:-}
       BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+      KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
