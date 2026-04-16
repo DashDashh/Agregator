@@ -20,3 +20,5 @@ aggregator
 # Docker volumes
 data/
 tmp/
+
+.DS_Store
