@@ -5,13 +5,17 @@ import (
 
 	"github.com/kirilltahmazidi/aggregator/internal/handler"
 	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/src/analytics_component"
+	"github.com/kirilltahmazidi/aggregator/src/contracts_component"
+	"github.com/kirilltahmazidi/aggregator/src/orders_component"
+	"github.com/kirilltahmazidi/aggregator/src/registry_component"
 )
 
 const (
-	ComponentRegistry  = "components.agregator.registry"
-	ComponentOrders    = "components.agregator.orders"
-	ComponentContracts = "components.agregator.contracts"
-	ComponentAnalytics = "components.agregator.analytics"
+	ComponentRegistry  = registry_component.Topic
+	ComponentOrders    = orders_component.Topic
+	ComponentContracts = contracts_component.Topic
+	ComponentAnalytics = analytics_component.Topic
 )
 
 // ActionRouting описывает, какой внутренний компонент отвечает за action.

@@ -1,6 +1,8 @@
 # Go binaries
 aggregator
 /aggregator
+/gateway
+/bin/
 
 # Go build cache
 *.test
@@ -17,3 +19,6 @@ aggregator
 
 # Docker volumes
 data/
+tmp/
+
+.DS_Store
