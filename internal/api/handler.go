@@ -110,6 +110,10 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if err := h.publisher.PublishOrder(r.Context(), order); err != nil {
 		log.Printf("[api] failed to publish order to kafka: %v", err)
 		// не падаем — заказ уже сохранён, оператор получит его позже
+	} else if ok := h.store.UpdateOrderStatus(order.ID, store.StatusSearching); !ok {
+		log.Printf("[api] failed to update order status to searching: order_id=%s", order.ID)
+	} else {
+		order.Status = store.StatusSearching
 	}
 
 	respond(w, http.StatusCreated, order)
