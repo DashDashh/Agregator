@@ -37,8 +37,10 @@ func TestOrderStateTransitions(t *testing.T) {
 		t.Fatalf("insert order error: %v", err)
 	}
 
-	// Переводим в searching
-	st.UpdateOrderStatus(orderID, store.StatusSearching)
+	// После публикации заказа API переводит его в searching.
+	if ok := st.UpdateOrderStatus(orderID, store.StatusSearching); !ok {
+		t.Fatalf("expected UpdateOrderStatus to move order into searching")
+	}
 
 	// --- ТЕСТ: price_offer (SetOperatorOffer) ---
 	ok := st.SetOperatorOffer(orderID, operatorID, 500)
