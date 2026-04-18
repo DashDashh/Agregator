@@ -190,7 +190,7 @@ POST /orders
   "bottom_right_lon": 0,
   "commission_amount": 0,
   "operator_amount": 0,
-  "status": "pending",
+  "status": "searching",
   "created_at": "2026-03-04T17:31:12.658581072Z"
 }
 ```
@@ -277,7 +277,7 @@ POST /orders/{id}/confirm-completion
 
 | Статус                       | Когда выставляется                                                                                                       |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `pending`                        | Заказ создан, ждёт предложений                                                                                  |
+| `pending`                        | Заказ создан в БД, но ещё не опубликован эксплуатантам                                                                                  |
 | `searching`                      | Агрегатор опубликовал заказ в `operator.requests` через выбранный транспорт            |
 | `matched`                        | Эксплуатант прислал оферту цены (`price_offer`)                                                             |
 | `confirmed`                      | Пользователь принял цену (`POST .../confirm-price`)                                                               |
@@ -321,16 +321,32 @@ ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
   | jq -r .id)
 echo "ORDER_ID=$ORDER_ID"
 
-# 4. Подтвердить цену эксплуатанта (учитывается COMMISSION_RATE)
+# 4. Эксплуатант присылает оферту цены через Kafka
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka exec -T kafka \
+  kafka-console-producer \
+  --bootstrap-server kafka:9092 \
+  --topic components.agregator.operator.responses <<EOF
+{"action":"price_offer","sender":"operator_service","correlation_id":"$ORDER_ID","payload":{"order_id":"$ORDER_ID","operator_id":"$OPERATOR_ID","operator_name":"ООО Дроны","price":4500,"estimated_time_minutes":25,"provided_security_goals":["ЦБ1"],"insurance_coverage":"Лимит 1 млн"}}
+EOF
+
+# 5. Подтвердить цену эксплуатанта (учитывается COMMISSION_RATE)
 curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-price \
   -H "Content-Type: application/json" \
   -d '{"operator_id":"'"'"$OPERATOR_ID'"'"","accepted_price":4500}' | jq
 
-# 5. Подтвердить выполнение заказчиком
+# 6. Эксплуатант сообщает об успешном выполнении через Kafka
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka exec -T kafka \
+  kafka-console-producer \
+  --bootstrap-server kafka:9092 \
+  --topic components.agregator.operator.responses <<EOF
+{"action":"order_result","sender":"operator_service","correlation_id":"$ORDER_ID","payload":{"order_id":"$ORDER_ID","operator_id":"$OPERATOR_ID","success":true,"reason":"","total_price":4500}}
+EOF
+
+# 7. Подтвердить выполнение заказчиком
 curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-completion \
   -H "Content-Type: application/json" -d '{}' | jq
 
-# 6. Проверить заказ и список
+# 8. Проверить заказ и список
 curl -s http://localhost:8081/orders/$ORDER_ID | jq
 curl -s http://localhost:8081/orders | jq
 ```
