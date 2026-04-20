@@ -16,6 +16,7 @@ type Config struct {
 	OperatorTopic         string // топик куда агрегатор пишет задания для эксплуатантов
 	OperatorResponseTopic string // топик откуда агрегатор читает ответы эксплуатантов
 	CommissionRate        float64
+	AuthSecret            string
 	DatabaseURL           string
 	MigrationsPath        string // путь к SQL-файлу миграции
 	OperatorTransport     string // kafka | both (MQTT только для operator.* топиков)
@@ -65,6 +66,7 @@ func Load() *Config {
 		OperatorTopic:         getEnv("KAFKA_OPERATOR_TOPIC", defaultOperatorTopic),
 		OperatorResponseTopic: getEnv("KAFKA_OPERATOR_RESPONSE_TOPIC", defaultOperatorResponseTopic),
 		CommissionRate:        commissionRate,
+		AuthSecret:            getEnv("AUTH_SECRET", "dev-only-change-me"),
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),

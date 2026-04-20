@@ -49,18 +49,20 @@ type Order struct {
 
 // Operator — зарегистрированный эксплуатант
 type Operator struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	License string `json:"license"`
-	Email   string `json:"email"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	License      string `json:"license"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"-"`
 }
 
 // Customer — зарегистрированный заказчик
 type Customer struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	Phone        string `json:"phone"`
+	PasswordHash string `json:"-"`
 }
 
 // Store — хранилище на основе PostgreSQL
@@ -197,6 +199,41 @@ func (s *Store) ListOrders() []*Order {
 	return orders
 }
 
+func (s *Store) ListOrdersByCustomer(customerID string) []*Order {
+	rows, err := s.db.Query(`
+		SELECT id, customer_id, description, budget,
+			from_lat, from_lon, to_lat, to_lon,
+			status, operator_id, offered_price,
+			mission_type, security_goals,
+			top_left_lat, top_left_lon, bottom_right_lat, bottom_right_lon,
+			commission_amount, operator_amount,
+			created_at
+		FROM orders WHERE customer_id = $1 ORDER BY created_at DESC
+	`, customerID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var orders []*Order
+	for rows.Next() {
+		o := &Order{}
+		if err := rows.Scan(
+			&o.ID, &o.CustomerID, &o.Description, &o.Budget,
+			&o.FromLat, &o.FromLon, &o.ToLat, &o.ToLon,
+			&o.Status, &o.OperatorID, &o.OfferedPrice,
+			&o.MissionType, pq.Array(&o.SecurityGoals),
+			&o.TopLeftLat, &o.TopLeftLon, &o.BottomRightLat, &o.BottomRightLon,
+			&o.CommissionAmount, &o.OperatorAmount,
+			&o.CreatedAt,
+		); err != nil {
+			continue
+		}
+		orders = append(orders, o)
+	}
+	return orders
+}
+
 func (s *Store) UpdateOrderStatus(id string, status OrderStatus) bool {
 	res, err := s.db.Exec(`UPDATE orders SET status = $1 WHERE id = $2`, string(status), id)
 	if err != nil {
@@ -248,8 +285,8 @@ func (s *Store) SetOperatorOffer(orderID, operatorID string, price float64) bool
 	res, err := s.db.Exec(`
 		UPDATE orders 
 		SET status = $1, operator_id = $2, offered_price = $3 
-		WHERE id = $4 AND status = $5
-	`, string(StatusMatched), operatorID, price, orderID, string(StatusSearching))
+		WHERE id = $4 AND status IN ($5, $6)
+	`, string(StatusMatched), operatorID, price, orderID, string(StatusSearching), string(StatusPending))
 
 	if err != nil {
 		return false
@@ -281,41 +318,87 @@ func (s *Store) ProcessOrderResult(orderID string, success bool) bool {
 
 func (s *Store) SaveOperator(op *Operator) error {
 	_, err := s.db.Exec(`
-		INSERT INTO operators (id, name, license, email)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO operators (id, name, license, email, password_hash)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (id) DO NOTHING
-	`, op.ID, op.Name, op.License, op.Email)
+	`, op.ID, op.Name, op.License, op.Email, op.PasswordHash)
 	return err
 }
 
 func (s *Store) GetOperator(id string) (*Operator, bool) {
 	op := &Operator{}
 	err := s.db.QueryRow(`
-		SELECT id, name, license, email FROM operators WHERE id = $1
-	`, id).Scan(&op.ID, &op.Name, &op.License, &op.Email)
+		SELECT id, name, license, email, password_hash FROM operators WHERE id = $1
+	`, id).Scan(&op.ID, &op.Name, &op.License, &op.Email, &op.PasswordHash)
 	if err != nil {
 		return nil, false
 	}
 	return op, true
 }
 
+func (s *Store) GetOperatorByEmail(email string) (*Operator, bool) {
+	op := &Operator{}
+	err := s.db.QueryRow(`
+		SELECT id, name, license, email, password_hash FROM operators
+		WHERE LOWER(email) = LOWER($1)
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, email).Scan(&op.ID, &op.Name, &op.License, &op.Email, &op.PasswordHash)
+	if err != nil {
+		return nil, false
+	}
+	return op, true
+}
+
+func (s *Store) SetOperatorPasswordHash(id, passwordHash string) bool {
+	res, err := s.db.Exec(`UPDATE operators SET password_hash = $1 WHERE id = $2`, passwordHash, id)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
 // Customers
 func (s *Store) SaveCustomer(c *Customer) error {
 	_, err := s.db.Exec(`
-		INSERT INTO customers (id, name, email, phone)
- 		VALUES ($1, $2, $3, $4)
+		INSERT INTO customers (id, name, email, phone, password_hash)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (id) DO NOTHING
-	`, c.ID, c.Name, c.Email, c.Phone)
+	`, c.ID, c.Name, c.Email, c.Phone, c.PasswordHash)
 	return err
 }
 
 func (s *Store) GetCustomer(id string) (*Customer, bool) {
 	c := &Customer{}
 	err := s.db.QueryRow(`
-		SELECT id, name, email, phone FROM customers WHERE id = $1
-	`, id).Scan(&c.ID, &c.Name, &c.Email, &c.Phone)
+		SELECT id, name, email, phone, password_hash FROM customers WHERE id = $1
+	`, id).Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.PasswordHash)
 	if err != nil {
 		return nil, false
 	}
 	return c, true
+}
+
+func (s *Store) GetCustomerByEmail(email string) (*Customer, bool) {
+	c := &Customer{}
+	err := s.db.QueryRow(`
+		SELECT id, name, email, phone, password_hash FROM customers
+		WHERE LOWER(email) = LOWER($1)
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, email).Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.PasswordHash)
+	if err != nil {
+		return nil, false
+	}
+	return c, true
+}
+
+func (s *Store) SetCustomerPasswordHash(id, passwordHash string) bool {
+	res, err := s.db.Exec(`UPDATE customers SET password_hash = $1 WHERE id = $2`, passwordHash, id)
+	if err != nil {
+		return false
+	}
+	n, _ := res.RowsAffected()
+	return n > 0
 }

@@ -61,7 +61,7 @@ func main() {
 		log.Println("[main] operator transport mode: kafka only")
 	}
 
-	apiHandler := api.NewHandler(s, publisher, cfg.CommissionRate)
+	apiHandler := api.NewHandler(s, publisher, cfg.CommissionRate, cfg.AuthSecret)
 	router := api.NewRouter(apiHandler)
 	httpServer := &http.Server{
 		Addr:    ":8080",

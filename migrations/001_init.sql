@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS customers (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
     email       TEXT NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT '',
     phone       TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS operators (
     operator_amount   NUMERIC(12, 2) NOT NULL DEFAULT 0, -- сумма к перечислению оператору (после комиссии)
     license     TEXT NOT NULL,
     email       TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -60,6 +62,12 @@ ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS bottom_right_lon DOUBLE PRECISION NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS commission_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS operator_amount NUMERIC(12, 2) NOT NULL DEFAULT 0;
+
+ALTER TABLE customers
+    ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE operators
+    ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
 
 -- Индекс для быстрого поиска заказов по заказчику
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);

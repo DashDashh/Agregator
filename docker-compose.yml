@@ -30,6 +30,7 @@ services:
       BROKER_PASSWORD: ${BROKER_PASSWORD:-${ADMIN_PASSWORD:-admin_secret_123}}
       KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
+      AUTH_SECRET: ${AUTH_SECRET:-dev_change_me_please_32_chars_min}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure
