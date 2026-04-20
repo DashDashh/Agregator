@@ -30,6 +30,24 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka u
 
 Этот сценарий поднимет локальные `zookeeper`, `kafka` и `kafka-init`, не меняя основной `docker-compose.yml`.
 
+## Фронтенд
+
+Встроенная панель доступна по адресу:
+
+```text
+http://localhost:8081
+```
+
+Основной пользовательский сценарий:
+
+1. Зарегистрировать заказчика или эксплуатанта через форму на стартовом экране.
+2. Войти по `email` и паролю.
+3. Заказчик создаёт заказ и видит только свои заказы.
+4. Эксплуатант видит список заказов и может предложить цену вручную.
+5. После предложения цены заказчик подтверждает цену, и заказ переходит в статус `confirmed`.
+
+> Ручная кнопка эксплуатанта `Предложить цену` нужна для демонстрации без отдельного сервиса эксплуатанта. Интеграционный путь через Kafka сохраняется: внешний эксплуатант должен читать `operator.requests` и писать `price_offer` в `operator.responses`.
+
 ## Режим транспорта
 
 Для обмена с эксплуатантами (`operator.requests` / `operator.responses`) режим выбирается через переменную окружения `OPERATOR_TRANSPORT`:
@@ -80,6 +98,7 @@ POST /customers
 {
   "name": "Иван Иванов",
   "email": "ivan@mail.ru",
+  "password": "strongpass123",
   "phone": "+79001234567"
 }
 ```
@@ -88,10 +107,14 @@ POST /customers
 
 ```json
 {
-  "id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-  "name": "Иван Иванов",
-  "email": "ivan@mail.ru",
-  "phone": "+79001234567"
+  "token": "eyJ...",
+  "role": "customer",
+  "user": {
+    "id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
+    "name": "Иван Иванов",
+    "email": "ivan@mail.ru",
+    "phone": "+79001234567"
+  }
 }
 ```
 
@@ -111,7 +134,8 @@ POST /operators
 {
   "name": "ООО АэроДоставка",
   "license": "LIC-2024-001",
-  "email": "ops@aerodostavka.ru"
+  "email": "ops@aerodostavka.ru",
+  "password": "strongpass123"
 }
 ```
 
@@ -119,14 +143,57 @@ POST /operators
 
 ```json
 {
-  "id": "a1b2c3d4-...",
-  "name": "ООО АэроДоставка",
-  "license": "LIC-2024-001",
-  "email": "ops@aerodostavka.ru"
+  "token": "eyJ...",
+  "role": "operator",
+  "user": {
+    "id": "a1b2c3d4-...",
+    "name": "ООО АэроДоставка",
+    "license": "LIC-2024-001",
+    "email": "ops@aerodostavka.ru"
+  }
 }
 ```
 
 ---
+
+### Авторизация
+
+#### Войти в аккаунт
+
+```
+POST /auth/login
+```
+
+**Тело запроса:**
+
+```json
+{
+  "role": "customer",
+  "email": "ivan@mail.ru",
+  "password": "strongpass123"
+}
+```
+
+**Ответ `200`:**
+
+```json
+{
+  "token": "eyJ...",
+  "role": "customer",
+  "user": {
+    "id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
+    "name": "Иван Иванов",
+    "email": "ivan@mail.ru",
+    "phone": "+79001234567"
+  }
+}
+```
+
+Защищённые ручки требуют заголовок:
+
+```http
+Authorization: Bearer <token>
+```
 
 ### Заказы
 
@@ -136,7 +203,7 @@ POST /operators
 POST /orders
 ```
 
-> Требует существующего `customer_id`. При создании заказ автоматически отправляется эксплуатантам через выбранный транспорт (`operator.requests`): Kafka либо Kafka+MQTT.
+> Требует авторизации заказчика. `customer_id` берётся из токена. При создании заказ автоматически отправляется эксплуатантам через выбранный транспорт (`operator.requests`): Kafka либо Kafka+MQTT.
 
 **Тело запроса (delivery — по умолчанию):**
 
@@ -203,6 +270,8 @@ POST /orders
 GET /orders
 ```
 
+> Заказчик получает только свои заказы. Эксплуатант видит общий список.
+
 **Ответ `200`:** массив объектов заказа (sorted by `created_at DESC`).
 
 ---
@@ -256,6 +325,33 @@ POST /orders/{id}/confirm-price
 
 > Сбор считается как `accepted_price * COMMISSION_RATE` (env, по умолчанию 0.1). Оператор получает `accepted_price - commission_amount`.
 
+#### Предложить цену вручную
+
+```
+POST /orders/{id}/offer
+```
+
+> Dev/fallback-режим для фронта. В штатной интеграции оферта приходит от эксплуатанта через Kafka сообщением `price_offer`.
+
+**Тело запроса:**
+
+```json
+{
+  "price": 4500.00
+}
+```
+
+**Ответ `200`:**
+
+```json
+{
+  "order_id": "e16d6d12-...",
+  "operator_id": "a1b2c3d4-...",
+  "offered_price": 4500.00,
+  "status": "matched"
+}
+```
+
 #### Подтвердить выполнение заказчиком
 
 ```
@@ -279,7 +375,7 @@ POST /orders/{id}/confirm-completion
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `pending`                        | Заказ создан в БД, но ещё не опубликован эксплуатантам                                                                                  |
 | `searching`                      | Агрегатор опубликовал заказ в `operator.requests` через выбранный транспорт            |
-| `matched`                        | Эксплуатант прислал оферту цены (`price_offer`)                                                             |
+| `matched`                        | Эксплуатант прислал оферту цены (`price_offer`) или предложил цену через fallback-ручку `/offer`                                                             |
 | `confirmed`                      | Пользователь принял цену (`POST .../confirm-price`)                                                               |
 | `completed_pending_confirmation` | Оператор сообщил об успехе (`order_result` success=true), ждём подтверждения заказчика |
 | `completed`                      | Заказчик подтвердил выполнение (`POST .../confirm-completion`)                                              |
