@@ -39,13 +39,43 @@
             <h2 class="text-xl font-semibold mb-4">Создать новый заказ</h2>
             <form id="orderForm" class="grid grid-cols-2 gap-4">
                 <input type="text" id="orderCustomerId" placeholder="ID Заказчика (UUID)" class="w-full border p-2 rounded col-span-2" required>
-                <input type="text" id="orderDesc" placeholder="Описание груза" class="w-full border p-2 rounded col-span-2" required>
+                <input type="text" id="orderDesc" placeholder="Описание груза / задачи" class="w-full border p-2 rounded col-span-2" required>
                 <input type="number" id="orderBudget" placeholder="Бюджет (руб.)" class="w-full border p-2 rounded" required>
-                <div class="col-span-2 grid grid-cols-4 gap-2">
+                
+                <div class="col-span-2 pt-2 pb-1 border-t space-y-3">
+                    <label class="block text-sm font-semibold text-gray-700">Тип дрона / Миссия:</label>
+                    <div class="flex gap-6">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mission_type" value="delivery" checked class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="toggleMissionType()">
+                            <span class="text-gray-800">Доставщик</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="mission_type" value="agro" class="w-4 h-4 text-blue-600 focus:ring-blue-500" onchange="toggleMissionType()">
+                            <span class="text-gray-800">Агро-дрон</span>
+                        </label>
+                    </div>
+
+                    <label class="block text-sm font-semibold text-gray-700 mt-2">Цели безопасности:</label>
+                    <div class="grid grid-cols-2 gap-3 text-sm bg-gray-50 border border-gray-200 p-3 rounded-md">
+                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"><input type="checkbox" name="sec_goals" value="ЦБ1" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">ЦБ1 (Доверенный маршрут)</label>
+                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"><input type="checkbox" name="sec_goals" value="ЦБ2" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">ЦБ2 (Аутентичность)</label>
+                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"><input type="checkbox" name="sec_goals" value="ЦБ3" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">ЦБ3 (Безопасная посадка)</label>
+                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"><input type="checkbox" name="sec_goals" value="ЦБ4" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500">ЦБ4 (Приватность съемки)</label>
+                    </div>
+                </div>
+
+                <div id="deliveryCoords" class="col-span-2 grid grid-cols-4 gap-2">
                     <input type="number" step="0.0001" id="fromLat" placeholder="Откуда Широта" value="55.75" class="border p-2 rounded" required>
                     <input type="number" step="0.0001" id="fromLon" placeholder="Откуда Долгота" value="37.61" class="border p-2 rounded" required>
                     <input type="number" step="0.0001" id="toLat" placeholder="Куда Широта" value="55.80" class="border p-2 rounded" required>
                     <input type="number" step="0.0001" id="toLon" placeholder="Куда Долгота" value="37.65" class="border p-2 rounded" required>
+                </div>
+
+                <div id="agroCoords" class="col-span-2 grid grid-cols-4 gap-2 hidden">
+                    <input type="number" step="0.0001" id="topLeftLat" placeholder="Сев-Зап Широта" value="55.80" class="border p-2 rounded bg-green-50">
+                    <input type="number" step="0.0001" id="topLeftLon" placeholder="Сев-Зап Долгота" value="37.60" class="border p-2 rounded bg-green-50">
+                    <input type="number" step="0.0001" id="bottomRightLat" placeholder="Юго-Вост Широта" value="55.78" class="border p-2 rounded bg-green-50">
+                    <input type="number" step="0.0001" id="bottomRightLon" placeholder="Юго-Вост Долгота" value="37.62" class="border p-2 rounded bg-green-50">
                 </div>
                 <button type="submit" class="w-full bg-purple-500 text-white p-2 rounded hover:bg-purple-600 col-span-2 transition-colors duration-300">Создать заказ</button>
             </form>
@@ -188,18 +218,52 @@
             showNotification({ title: 'Эксплуатант создан', message: `Успешно! ID: <br>${result.id}` });
         });
 
+        // Функции переключения типа миссии
+        window.toggleMissionType = function() {
+            const type = document.querySelector('input[name="mission_type"]:checked').value;
+            const delData = document.getElementById('deliveryCoords');
+            const agrData = document.getElementById('agroCoords');
+            
+            if (type === 'delivery') {
+                delData.classList.remove('hidden');
+                agrData.classList.add('hidden');
+                Array.from(delData.querySelectorAll('input')).forEach(el => el.required = true);
+                Array.from(agrData.querySelectorAll('input')).forEach(el => el.required = false);
+            } else {
+                delData.classList.add('hidden');
+                agrData.classList.remove('hidden');
+                Array.from(delData.querySelectorAll('input')).forEach(el => el.required = false);
+                Array.from(agrData.querySelectorAll('input')).forEach(el => el.required = true);
+            }
+        };
+
         // 3. Создание заказа
         document.getElementById('orderForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const missionType = document.querySelector('input[name="mission_type"]:checked').value;
+            const securityGoals = Array.from(document.querySelectorAll('input[name="sec_goals"]:checked')).map(el => el.value);
+
             const data = {
                 customer_id: document.getElementById('orderCustomerId').value,
                 description: document.getElementById('orderDesc').value,
                 budget: parseFloat(document.getElementById('orderBudget').value),
-                from_lat: parseFloat(document.getElementById('fromLat').value),
-                from_lon: parseFloat(document.getElementById('fromLon').value),
-                to_lat: parseFloat(document.getElementById('toLat').value),
-                to_lon: parseFloat(document.getElementById('toLon').value)
+                mission_type: missionType,
+                security_goals: securityGoals
             };
+
+            if (missionType === 'delivery') {
+                data.from_lat = parseFloat(document.getElementById('fromLat').value);
+                data.from_lon = parseFloat(document.getElementById('fromLon').value);
+                data.to_lat = parseFloat(document.getElementById('toLat').value);
+                data.to_lon = parseFloat(document.getElementById('toLon').value);
+            } else {
+                data.top_left_lat = parseFloat(document.getElementById('topLeftLat').value);
+                data.top_left_lon = parseFloat(document.getElementById('topLeftLon').value);
+                data.bottom_right_lat = parseFloat(document.getElementById('bottomRightLat').value);
+                data.bottom_right_lon = parseFloat(document.getElementById('bottomRightLon').value);
+            }
+
             const result = await apiCall('/orders', 'POST', data);
             
             showNotification({ title: 'Заказ успешно отправлен', message: `ID: ${result.id}` });
