@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""Read-only analytics report for the aggregator database.
-
-The module is intentionally isolated from the Go service: it reads a snapshot
-from PostgreSQL, calculates metrics with pandas, and prints JSON.
-"""
-
 from __future__ import annotations
 
 import argparse
