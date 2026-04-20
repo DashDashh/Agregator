@@ -60,7 +60,3 @@ pip install -r analytics/requirements.txt
 ANALYTICS_DATABASE_URL="postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable" \
   python analytics/report.py
 ```
-
-## Первый шаг
-
-Это базовый ETL/reporting слой. Следующий логичный шаг - подключить его к отдельной read-only реплике или Kafka-потоку событий и добавить API для фронтенда оператора.
