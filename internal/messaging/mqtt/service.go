@@ -10,8 +10,8 @@ import (
 
 	paho "github.com/eclipse/paho.mqtt.golang"
 
+	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
 	"github.com/kirilltahmazidi/aggregator/internal/config"
-	"github.com/kirilltahmazidi/aggregator/internal/models"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 

@@ -7,5 +7,5 @@
 - `create_dispute`
 
 Код обработки входящих bus-сообщений находится в `component.go`.
-Компонент вызывается через gateway, а общий слой совместимости остаётся в
-`internal/handler`.
+Компонент вызывается через gateway и общий bus-диспетчер в
+`internal/bus/handler`.

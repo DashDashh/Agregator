@@ -24,7 +24,7 @@ func TestOrderStateTransitions(t *testing.T) {
 	customerID := uuid.NewString()
 	orderID := uuid.NewString()
 	operatorID := uuid.NewString()
-	
+
 	// Вставляем заказ через методы хранилища
 	err = st.SaveOrder(&store.Order{
 		ID:          orderID,

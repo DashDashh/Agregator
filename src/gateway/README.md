@@ -5,7 +5,7 @@ Gateway слушает системный топик `systems.agregator`, мар
 `components.agregator.responses`.
 
 Текущая таблица маршрутизации находится в
-`internal/gateway/gateway.go`, а реальные обработчики сообщений находятся в
+`internal/bus/gateway/gateway.go`, а реальные обработчики сообщений находятся в
 пакетах внутри `src/`.
 
 Gateway связывает действия со следующими компонентами:
