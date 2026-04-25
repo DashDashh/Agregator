@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
 )
 
 // Ok builds a successful response envelope for the given request and payload.

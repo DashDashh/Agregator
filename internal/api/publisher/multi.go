@@ -1,4 +1,4 @@
-package api
+package publisher
 
 import (
 	"context"
@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/api/handlers"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 
-// MultiPublisher распределяет операции публикации на несколько бекендов (Kafka, MQTT)
+// MultiPublisher distributes publish operations across multiple backends.
 type MultiPublisher struct {
-	backends []Publisher
+	backends []handlers.Publisher
 }
 
-func NewMultiPublisher(backends ...Publisher) *MultiPublisher {
+func NewMultiPublisher(backends ...handlers.Publisher) *MultiPublisher {
 	return &MultiPublisher{backends: backends}
 }
 

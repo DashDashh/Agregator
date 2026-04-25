@@ -3,8 +3,8 @@ package handler
 import (
 	"fmt"
 
-	"github.com/kirilltahmazidi/aggregator/internal/models"
-	"github.com/kirilltahmazidi/aggregator/internal/response"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/response"
 	"github.com/kirilltahmazidi/aggregator/src/analytics_component"
 	"github.com/kirilltahmazidi/aggregator/src/contracts_component"
 	"github.com/kirilltahmazidi/aggregator/src/orders_component"

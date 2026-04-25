@@ -6,5 +6,5 @@
 - `register_customer`
 
 Код обработки входящих bus-сообщений находится в `component.go`.
-Вызов компонента идёт через gateway, а общий слой совместимости остаётся в
-`internal/handler`.
+Вызов компонента идёт через gateway и общий bus-диспетчер в
+`internal/bus/handler`.

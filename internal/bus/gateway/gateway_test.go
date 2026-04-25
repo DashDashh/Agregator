@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kirilltahmazidi/aggregator/internal/handler"
-	"github.com/kirilltahmazidi/aggregator/internal/models"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/handler"
+	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
 )
 
 func TestComponentForKnownAction(t *testing.T) {

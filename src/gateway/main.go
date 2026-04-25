@@ -9,11 +9,13 @@ import (
 	"syscall"
 
 	"github.com/kirilltahmazidi/aggregator/internal/api"
+	"github.com/kirilltahmazidi/aggregator/internal/api/handlers"
+	"github.com/kirilltahmazidi/aggregator/internal/api/publisher"
+	busgateway "github.com/kirilltahmazidi/aggregator/internal/bus/gateway"
+	bushandler "github.com/kirilltahmazidi/aggregator/internal/bus/handler"
 	"github.com/kirilltahmazidi/aggregator/internal/config"
-	"github.com/kirilltahmazidi/aggregator/internal/gateway"
-	"github.com/kirilltahmazidi/aggregator/internal/handler"
-	"github.com/kirilltahmazidi/aggregator/internal/kafka"
-	"github.com/kirilltahmazidi/aggregator/internal/mqtt"
+	"github.com/kirilltahmazidi/aggregator/internal/messaging/kafka"
+	"github.com/kirilltahmazidi/aggregator/internal/messaging/mqtt"
 	"github.com/kirilltahmazidi/aggregator/internal/store"
 )
 
@@ -44,24 +46,24 @@ func main() {
 	}
 	log.Println("[main] migrations applied")
 
-	h := handler.New()
-	gw := gateway.New(h)
+	h := bushandler.New()
+	gw := busgateway.New(h)
 	svc := kafka.NewService(cfg, gw, s)
 
-	publisher := api.NewMultiPublisher(svc)
+	operatorPublisher := publisher.NewMultiPublisher(svc)
 	var mqttSvc *mqtt.Service
 	if cfg.UseMQTTForOperators() {
 		mqttSvc, err = mqtt.NewService(cfg, s)
 		if err != nil {
 			log.Fatalf("[main] mqtt is required by OPERATOR_TRANSPORT=%s: %v", cfg.OperatorTransport, err)
 		}
-		publisher = api.NewMultiPublisher(svc, mqttSvc)
+		operatorPublisher = publisher.NewMultiPublisher(svc, mqttSvc)
 		log.Println("[main] operator transport mode: kafka + mqtt")
 	} else {
 		log.Println("[main] operator transport mode: kafka only")
 	}
 
-	apiHandler := api.NewHandler(s, publisher, cfg.CommissionRate, cfg.AuthSecret)
+	apiHandler := handlers.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret)
 	router := api.NewRouter(apiHandler)
 	httpServer := &http.Server{
 		Addr:    ":8080",
