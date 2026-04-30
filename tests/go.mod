@@ -3,6 +3,7 @@ module tests
 go 1.25.0
 
 require (
+	github.com/jackc/pgx/v5 v5.8.0
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/testcontainers/testcontainers-go v0.41.0
 )
@@ -32,7 +33,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.8.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
