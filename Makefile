@@ -13,8 +13,7 @@ help:
 build:
 	go build -o bin/agregator ./src/gateway
 
-test:
-	go test ./...
+tests: unit-test integration-test
 
 unit-test:
 	go test ./...
