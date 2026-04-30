@@ -61,6 +61,28 @@ services:
     networks:
       - drones_net
 
+  tests:
+    build:
+      context: ./tests
+      dockerfile: Dockerfile
+    working_dir: /tests
+    environment:
+      AGGREGATOR_BASE_URL: http://aggregator:8080
+      KAFKA_BROKERS: kafka:9092
+      TEST_DB_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
+    command: ["go", "test", "-race", "-cover", "-v", "./..."]
+    depends_on:
+      aggregator:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    profiles:
+      - tests
+    networks:
+      - drones_net
+
 networks:
   drones_net:
     external: true
