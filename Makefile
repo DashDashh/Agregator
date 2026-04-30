@@ -2,7 +2,7 @@
 
 help:
 	@echo "make build       - build gateway binary"
-	@echo "make test        - run Go tests"
+	@echo "make tests       - run all tests"
 	@echo "make unit-test   - run unit tests"
 	@echo "make integration-test - run integration tests in docker compose"
 	@echo "make docker-up   - start postgres + aggregator via docker compose kafka profile"
@@ -13,8 +13,7 @@ help:
 build:
 	go build -o bin/agregator ./src/gateway
 
-test:
-	go test ./...
+tests: unit-test integration-test
 
 unit-test:
 	go test ./...
