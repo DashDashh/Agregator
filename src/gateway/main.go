@@ -8,15 +8,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kirilltahmazidi/aggregator/internal/api"
-	"github.com/kirilltahmazidi/aggregator/internal/api/handlers"
-	"github.com/kirilltahmazidi/aggregator/internal/api/publisher"
-	busgateway "github.com/kirilltahmazidi/aggregator/internal/bus/gateway"
-	bushandler "github.com/kirilltahmazidi/aggregator/internal/bus/handler"
-	"github.com/kirilltahmazidi/aggregator/internal/config"
-	"github.com/kirilltahmazidi/aggregator/internal/messaging/kafka"
-	"github.com/kirilltahmazidi/aggregator/internal/messaging/mqtt"
-	"github.com/kirilltahmazidi/aggregator/internal/store"
+	contractsapi "github.com/kirilltahmazidi/aggregator/src/contracts_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/api"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/api/publisher"
+	busgateway "github.com/kirilltahmazidi/aggregator/src/gateway/bus/gateway"
+	bushandler "github.com/kirilltahmazidi/aggregator/src/gateway/bus/handler"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component/kafka"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component/mqtt"
+	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
+	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
 func main() {
@@ -63,8 +65,11 @@ func main() {
 		log.Println("[main] operator transport mode: kafka only")
 	}
 
-	apiHandler := handlers.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret)
-	router := api.NewRouter(apiHandler)
+	router := api.NewRouter(api.Handlers{
+		Registry:  registryapi.NewHandler(s, cfg.AuthSecret),
+		Orders:    ordersapi.NewHandler(s, operatorPublisher, cfg.AuthSecret),
+		Contracts: contractsapi.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret),
+	})
 	httpServer := &http.Server{
 		Addr:    ":8080",
 		Handler: router,

@@ -3,8 +3,8 @@ package analytics_component
 import (
 	"encoding/json"
 
-	"github.com/kirilltahmazidi/aggregator/internal/bus/models"
-	"github.com/kirilltahmazidi/aggregator/internal/bus/response"
+	"github.com/kirilltahmazidi/aggregator/src/shared/models"
+	"github.com/kirilltahmazidi/aggregator/src/shared/response"
 )
 
 const Topic = "components.agregator.analytics"

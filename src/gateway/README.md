@@ -4,9 +4,8 @@ Gateway слушает системный топик `systems.agregator`, мар
 сообщения по полю `action` во внутренние компоненты и публикует ответы в
 `components.agregator.responses`.
 
-Текущая таблица маршрутизации находится в
-`internal/bus/gateway/gateway.go`, а реальные обработчики сообщений находятся в
-пакетах внутри `src/`.
+Текущая таблица маршрутизации находится в `src/gateway/bus/gateway`, а реальные
+обработчики сообщений находятся в пакетах внутри `src/`.
 
 Gateway связывает действия со следующими компонентами:
 
@@ -14,3 +13,11 @@ Gateway связывает действия со следующими компо
 - `orders_component`
 - `contracts_component`
 - `analytics_component`
+
+HTTP routing, middleware, publisher fan-out and configuration also live inside
+`src/gateway`, because this is the system entry adapter. Business HTTP handlers
+live in their owning components:
+
+- `src/registry_component/httpapi`
+- `src/orders_component/httpapi`
+- `src/contracts_component/httpapi`
