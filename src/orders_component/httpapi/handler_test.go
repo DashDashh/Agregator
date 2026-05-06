@@ -105,3 +105,44 @@ func TestCreateOrderPublishesAndMarksSearching(t *testing.T) {
 		t.Fatalf("order = %+v, want searching", repo.order)
 	}
 }
+
+func TestGetOrderForbidsAnotherCustomerOrder(t *testing.T) {
+	token, err := auth.NewToken("customer-2", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+	}}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/orders/order-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.GetOrder(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestListOrdersForCustomerUsesTokenIdentity(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+	}}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ListOrders(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if !strings.Contains(rec.Body.String(), "order-1") {
+		t.Fatalf("body does not contain order: %s", rec.Body.String())
+	}
+}

@@ -107,3 +107,39 @@ func TestLoginRejectsWrongRole(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+func TestGetCustomerAllowsOwnProfile(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeRegistryStore{customer: &store.Customer{
+		ID:    "customer-1",
+		Name:  "Ivan",
+		Email: "ivan@example.com",
+	}}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/customers/customer-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.GetCustomer(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestGetCustomerForbidsAnotherProfile(t *testing.T) {
+	token, err := auth.NewToken("customer-2", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeRegistryStore{customer: &store.Customer{ID: "customer-1"}}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/customers/customer-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.GetCustomer(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
