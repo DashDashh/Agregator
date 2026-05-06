@@ -234,41 +234,12 @@ func (s *Service) RunOperatorConsumer(ctx context.Context) error {
 }
 
 func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message) {
-	var req models.Request
-	if err := json.Unmarshal(msg.Value, &req); err != nil {
-		log.Printf("[kafka] operator consumer: cannot unmarshal message: %v", err)
+	result, err := operator_exchange_component.ProcessOperatorMessage(s.store, msg.Value)
+	if err != nil {
+		log.Printf("[kafka] operator message result=%s error=%v", result, err)
 		return
 	}
-
-	switch req.Action {
-	case models.MsgPriceOffer:
-		var p models.PriceOfferPayload
-		if err := json.Unmarshal(req.Payload, &p); err != nil {
-			log.Printf("[kafka] price_offer: invalid payload: %v", err)
-			return
-		}
-		if s.store.SetOperatorOffer(p.OrderID, p.OperatorID, p.Price) {
-			log.Printf("[kafka] price_offer stored order_id=%s operator=%s price=%.2f",
-				p.OrderID, p.OperatorID, p.Price)
-		} else {
-			log.Printf("[kafka] price_offer: order not found order_id=%s", p.OrderID)
-		}
-
-	case models.MsgOrderResult:
-		var p models.OrderResultPayload
-		if err := json.Unmarshal(req.Payload, &p); err != nil {
-			log.Printf("[kafka] order_result: invalid payload: %v", err)
-			return
-		}
-		if s.store.ProcessOrderResult(p.OrderID, p.Success) {
-			log.Printf("[kafka] order_result applied order_id=%s success=%v", p.OrderID, p.Success)
-		} else {
-			log.Printf("[kafka] order_result: ignored or not found order_id=%s (invalid state transition)", p.OrderID)
-		}
-
-	default:
-		log.Printf("[kafka] operator consumer: unknown action=%s", req.Action)
-	}
+	log.Printf("[kafka] operator message result=%s", result)
 }
 
 func (s *Service) Run(ctx context.Context) error {

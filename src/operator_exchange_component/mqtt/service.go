@@ -145,36 +145,10 @@ func (s *Service) RunOperatorConsumer(ctx context.Context) error {
 }
 
 func (s *Service) processOperatorMessage(data []byte) {
-	var req models.Request
-	if err := json.Unmarshal(data, &req); err != nil {
-		log.Printf("[mqtt] operator message unmarshal error: %v", err)
+	result, err := operator_exchange_component.ProcessOperatorMessage(s.store, data)
+	if err != nil {
+		log.Printf("[mqtt] operator message result=%s error=%v", result, err)
 		return
 	}
-
-	switch req.Action {
-	case models.MsgPriceOffer:
-		var p models.PriceOfferPayload
-		if err := json.Unmarshal(req.Payload, &p); err != nil {
-			log.Printf("[mqtt] price_offer invalid payload: %v", err)
-			return
-		}
-		if s.store.SetOperatorOffer(p.OrderID, p.OperatorID, p.Price) {
-			log.Printf("[mqtt] price_offer stored order_id=%s operator=%s price=%.2f", p.OrderID, p.OperatorID, p.Price)
-		} else {
-			log.Printf("[mqtt] price_offer: order not found order_id=%s", p.OrderID)
-		}
-	case models.MsgOrderResult:
-		var p models.OrderResultPayload
-		if err := json.Unmarshal(req.Payload, &p); err != nil {
-			log.Printf("[mqtt] order_result invalid payload: %v", err)
-			return
-		}
-		if s.store.ProcessOrderResult(p.OrderID, p.Success) {
-			log.Printf("[mqtt] order_result applied order_id=%s success=%v", p.OrderID, p.Success)
-		} else {
-			log.Printf("[mqtt] order_result: ignored or not found order_id=%s (invalid state transition)", p.OrderID)
-		}
-	default:
-		// игнорируем неизвестные типы сообщений
-	}
+	log.Printf("[mqtt] operator message result=%s", result)
 }
