@@ -36,6 +36,7 @@ func TestLoadAppliesNamespaceDefaults(t *testing.T) {
 
 func TestLoadNormalizesOperatorTransportAliases(t *testing.T) {
 	t.Setenv("OPERATOR_TRANSPORT", " kafka+mqtt ")
+	t.Setenv("COMPONENT_DISPATCH_MODE", " kafka ")
 
 	cfg := Load()
 
@@ -45,13 +46,24 @@ func TestLoadNormalizesOperatorTransportAliases(t *testing.T) {
 	if !cfg.UseMQTTForOperators() {
 		t.Fatal("UseMQTTForOperators returned false for both transport")
 	}
+	if cfg.ComponentDispatchMode != "broker" {
+		t.Fatalf("ComponentDispatchMode = %q, want broker", cfg.ComponentDispatchMode)
+	}
 }
 
 func TestValidateRejectsUnsupportedTransport(t *testing.T) {
-	cfg := &Config{OperatorTransport: "mqtt-only"}
+	cfg := &Config{OperatorTransport: "mqtt-only", ComponentDispatchMode: "inprocess"}
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate accepted unsupported transport")
+	}
+}
+
+func TestValidateRejectsUnsupportedDispatchMode(t *testing.T) {
+	cfg := &Config{OperatorTransport: "kafka", ComponentDispatchMode: "sideways"}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted unsupported dispatch mode")
 	}
 }
 

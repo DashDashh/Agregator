@@ -5,11 +5,15 @@ help:
 	@echo "make test        - run Go tests"
 	@echo "make docker-up   - start postgres + aggregator via docker compose kafka profile"
 	@echo "make docker-up-dev - start local dev stack with kafka"
+	@echo "make docker-up-micro - start gateway + component services"
 	@echo "make docker-down - stop docker compose services"
 	@echo "make docker-logs - follow service logs"
 
 build:
 	go build -o bin/agregator ./src/gateway
+
+build-components:
+	go build ./cmd/registry ./cmd/orders ./cmd/contracts ./cmd/analytics
 
 test:
 	go test ./...
@@ -19,6 +23,9 @@ docker-up:
 
 docker-up-dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka up -d --build
+
+docker-up-micro:
+	COMPONENT_DISPATCH_MODE=broker docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices up -d --build
 
 docker-down:
 	docker compose down

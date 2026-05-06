@@ -20,6 +20,7 @@ type Config struct {
 	DatabaseURL           string
 	MigrationsPath        string // путь к SQL-файлу миграции
 	OperatorTransport     string // kafka | both (MQTT только для operator.* топиков)
+	ComponentDispatchMode string // inprocess | broker
 
 	MQTTBroker            string
 	MQTTClientID          string
@@ -37,6 +38,7 @@ func Load() *Config {
 		defaultCommissionRate    = 0.1
 		defaultMQTTQoS           = 1
 		defaultOperatorTransport = "kafka"
+		defaultDispatchMode      = "inprocess"
 	)
 
 	systemNamespace := normalizeSystemNamespace(getEnv("SYSTEM_NAMESPACE", ""))
@@ -70,6 +72,7 @@ func Load() *Config {
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
+		ComponentDispatchMode: normalizeComponentDispatchMode(getEnv("COMPONENT_DISPATCH_MODE", defaultDispatchMode)),
 
 		MQTTBroker:            getEnv("MQTT_BROKER", "mqtt:1883"),
 		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", defaultClientName, mqttClientScope, "mqtt")),
@@ -132,12 +135,29 @@ func normalizeOperatorTransport(v string) string {
 	}
 }
 
+func normalizeComponentDispatchMode(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "", "inprocess", "in-process", "local":
+		return "inprocess"
+	case "broker", "kafka", "remote":
+		return "broker"
+	default:
+		return v
+	}
+}
+
 func (c *Config) Validate() error {
 	switch c.OperatorTransport {
 	case "kafka", "both":
-		return nil
 	default:
 		return fmt.Errorf("unsupported OPERATOR_TRANSPORT=%q, allowed values: kafka, both", c.OperatorTransport)
+	}
+	switch c.ComponentDispatchMode {
+	case "inprocess", "broker":
+		return nil
+	default:
+		return fmt.Errorf("unsupported COMPONENT_DISPATCH_MODE=%q, allowed values: inprocess, broker", c.ComponentDispatchMode)
 	}
 }
 

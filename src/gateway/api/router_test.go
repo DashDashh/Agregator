@@ -9,6 +9,7 @@ import (
 
 	contractsapi "github.com/kirilltahmazidi/aggregator/src/contracts_component/httpapi"
 	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
 	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
@@ -149,6 +150,10 @@ func (p routerPublisher) PublishConfirmPrice(context.Context, models.ConfirmPric
 func newTestRouter() http.Handler {
 	repo := &routerStore{}
 	pub := routerPublisher{}
+	return newTestRouterWith(repo, pub)
+}
+
+func newTestRouterWith(repo *routerStore, pub routerPublisher) http.Handler {
 	return NewRouter(Handlers{
 		Registry:  registryapi.NewHandler(repo, "test-secret"),
 		Orders:    ordersapi.NewHandler(repo, pub, "test-secret"),
@@ -200,5 +205,83 @@ func TestRouterDispatchesCustomerRegistration(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"token"`) {
 		t.Fatalf("body does not contain token: %s", rec.Body.String())
+	}
+}
+
+func TestRouterDispatchesOperatorRegistration(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/operators", strings.NewReader(`{
+		"name": "Operator",
+		"license": "LIC-1",
+		"email": "operator-router@example.com",
+		"password": "strongpass123"
+	}`))
+
+	newTestRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"role":"operator"`) {
+		t.Fatalf("body does not contain operator role: %s", rec.Body.String())
+	}
+}
+
+func TestRouterDispatchesOrderList(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusPending,
+	}}
+	req := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"order-1"`) {
+		t.Fatalf("body does not contain order: %s", rec.Body.String())
+	}
+}
+
+func TestRouterDispatchesGetOrder(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusPending,
+	}}
+	req := httptest.NewRequest(http.MethodGet, "/orders/order-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"order-1"`) {
+		t.Fatalf("body does not contain order: %s", rec.Body.String())
+	}
+}
+
+func TestRouterRejectsUnsupportedOrdersMethod(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/orders/order-1", nil)
+
+	newTestRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
 }

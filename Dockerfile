@@ -2,19 +2,20 @@
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
+ARG SERVICE_PATH=./src/gateway
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /aggregator ./src/gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -o /service ${SERVICE_PATH}
 
 # ─── Stage 2: minimal runtime ────────────────────────────────────────────────
 FROM alpine:3.19
 
 RUN apk add --no-cache ca-certificates tzdata
 
-COPY --from=builder /aggregator /aggregator
+COPY --from=builder /service /service
 # Миграции должны быть доступны при запуске сервиса
 COPY --from=builder /app/migrations /migrations
 # Страница фронтенда
@@ -28,4 +29,4 @@ ENV KAFKA_BROKER=kafka:9092 \
     KAFKA_CONSUMER_GROUP=agregator-group \
     KAFKA_DLT_TOPIC=errors.dead_letters
 
-ENTRYPOINT ["/aggregator"]
+ENTRYPOINT ["/service"]

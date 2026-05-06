@@ -18,9 +18,9 @@ const (
 	ComponentAnalytics = analytics_component.Topic
 )
 
-// ActionRouting описывает, какой внутренний компонент отвечает за action.
-// В текущем сервисе обработка остаётся in-process, но таблица маршрутизации
-// явно задаёт API gateway и упрощает дальнейшее вынесение компонентов.
+// ActionRouting описывает, какой компонент отвечает за action.
+// В режиме inprocess gateway вызывает обработчик напрямую, в режиме broker
+// использует эту же таблицу для отправки запроса в топик отдельного сервиса.
 var ActionRouting = map[models.MessageType]string{
 	models.MsgRegisterOperator:   ComponentRegistry,
 	models.MsgRegisterCustomer:   ComponentRegistry,

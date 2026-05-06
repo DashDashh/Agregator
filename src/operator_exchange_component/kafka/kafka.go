@@ -2,34 +2,34 @@ package kafka
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"log"
-	"os"
 
 	busgateway "github.com/kirilltahmazidi/aggregator/src/gateway/bus/gateway"
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
 	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component"
+	"github.com/kirilltahmazidi/aggregator/src/shared/kafkautil"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 	kafkago "github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/sasl/plain"
 )
 
 // Service инкапсулирует kafka reader/writer и запускает цикл обработки.
 type Service struct {
-	reader         *kafkago.Reader
-	writer         *kafkago.Writer // пишет responses обратно (для других сервисов)
-	outWriter      *kafkago.Writer // пишет задания эксплуатантам в operator.requests
-	operatorReader *kafkago.Reader // читает ответы эксплуатантов из operator.responses
-	dlt            *kafkago.Writer // dead-letter topic для нечитаемых сообщений
-	gateway        *busgateway.Gateway
-	store          operator_exchange_component.Store // для обновления статусов заказов
+	reader          *kafkago.Reader
+	writer          *kafkago.Writer // пишет responses обратно (для других сервисов)
+	componentWriter *kafkago.Writer // пишет запросы в топики отдельных компонентов
+	outWriter       *kafkago.Writer // пишет задания эксплуатантам в operator.requests
+	operatorReader  *kafkago.Reader // читает ответы эксплуатантов из operator.responses
+	dlt             *kafkago.Writer // dead-letter topic для нечитаемых сообщений
+	gateway         *busgateway.Gateway
+	store           operator_exchange_component.Store // для обновления статусов заказов
+	dispatchMode    string
 }
 
 func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_component.Store) *Service {
-	dialer := newDialer()
-	transport := newTransport(dialer)
+	dialer := kafkautil.NewDialer()
+	transport := kafkautil.NewTransport(dialer)
 
 	// читает из aggregator.requests
 	reader := kafkago.NewReader(kafkago.ReaderConfig{
@@ -48,6 +48,13 @@ func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_c
 		Topic:     cfg.ResponseTopic, //куда пишем
 		Balancer:  &kafkago.LeastBytes{},
 		Logger:    kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/writer] "+msg, args...) }),
+		Transport: transport,
+	}
+
+	componentWriter := &kafkago.Writer{
+		Addr:      kafkago.TCP(cfg.KafkaBroker),
+		Balancer:  &kafkago.LeastBytes{},
+		Logger:    kafkago.LoggerFunc(func(msg string, args ...interface{}) { log.Printf("[kafka/component-writer] "+msg, args...) }),
 		Transport: transport,
 	}
 
@@ -80,48 +87,16 @@ func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_c
 	})
 
 	return &Service{
-		reader:         reader,
-		writer:         writer,
-		outWriter:      outWriter,
-		operatorReader: operatorReader,
-		dlt:            dlt,
-		gateway:        g,
-		store:          s,
+		reader:          reader,
+		writer:          writer,
+		componentWriter: componentWriter,
+		outWriter:       outWriter,
+		operatorReader:  operatorReader,
+		dlt:             dlt,
+		gateway:         g,
+		store:           s,
+		dispatchMode:    cfg.ComponentDispatchMode,
 	}
-}
-
-func newDialer() *kafkago.Dialer {
-	dialer := &kafkago.Dialer{}
-
-	username := os.Getenv("BROKER_USER")
-	password := os.Getenv("BROKER_PASSWORD")
-	if username == "" && password == "" {
-		return dialer
-	}
-
-	dialer.SASLMechanism = plain.Mechanism{
-		Username: username,
-		Password: password,
-	}
-
-	if os.Getenv("KAFKA_TLS_ENABLED") == "true" {
-		dialer.TLS = &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		}
-	}
-
-	return dialer
-}
-
-func newTransport(dialer *kafkago.Dialer) *kafkago.Transport {
-	transport := &kafkago.Transport{}
-	if dialer == nil {
-		return transport
-	}
-
-	transport.TLS = dialer.TLS
-	transport.SASL = dialer.SASLMechanism
-	return transport
 }
 
 // PublishOrder отправляет заказ в топик operator.requests — эксплуатанты его читают.
@@ -246,6 +221,7 @@ func (s *Service) Run(ctx context.Context) error {
 	log.Printf("[kafka] starting consumer loop on topic=%s", s.reader.Config().Topic)
 	defer s.reader.Close()
 	defer s.writer.Close()
+	defer s.componentWriter.Close()
 	defer s.outWriter.Close()
 	defer s.dlt.Close()
 
@@ -280,6 +256,14 @@ func (s *Service) processMessage(ctx context.Context, msg kafkago.Message) {
 		s.sendToDLT(ctx, msg)
 		return
 	}
+	if req.CorrelationID == "" {
+		req.CorrelationID = string(msg.Key)
+	}
+
+	if s.dispatchMode == "broker" {
+		s.dispatchToComponent(ctx, req)
+		return
+	}
 
 	resp := s.gateway.Route(req)
 
@@ -311,6 +295,44 @@ func (s *Service) processMessage(ctx context.Context, msg kafkago.Message) {
 			log.Printf("[kafka] order status updated to searching order_id=%s", correlationID)
 		}
 	}
+}
+
+func (s *Service) dispatchToComponent(ctx context.Context, req models.Request) {
+	componentTopic, ok := s.gateway.ComponentFor(req.Action)
+	if !ok {
+		resp := models.Response{
+			Action:        models.ResponseAction,
+			Sender:        models.DefaultSender,
+			CorrelationID: req.GetCorrelationID(),
+			Success:       false,
+			Error:         "unknown action: " + string(req.Action),
+			Timestamp:     req.Timestamp,
+		}
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			log.Printf("[kafka] cannot marshal unknown-action response: %v", err)
+			return
+		}
+		if err := s.writer.WriteMessages(ctx, kafkago.Message{Key: []byte(req.GetCorrelationID()), Value: respBytes}); err != nil {
+			log.Printf("[kafka] failed to write unknown-action response: %v", err)
+		}
+		return
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		log.Printf("[kafka] cannot marshal component request: %v", err)
+		return
+	}
+	if err := s.componentWriter.WriteMessages(ctx, kafkago.Message{
+		Topic: componentTopic,
+		Key:   []byte(req.GetCorrelationID()),
+		Value: data,
+	}); err != nil {
+		log.Printf("[kafka] failed to dispatch action=%s to component=%s: %v", req.Action, componentTopic, err)
+		return
+	}
+	log.Printf("[kafka] dispatched action=%s correlation_id=%s to component=%s", req.Action, req.GetCorrelationID(), componentTopic)
 }
 
 func (s *Service) sendToDLT(ctx context.Context, original kafkago.Message) {

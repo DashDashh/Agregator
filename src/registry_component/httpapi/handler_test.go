@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,6 +106,94 @@ func TestLoginRejectsWrongRole(t *testing.T) {
 	h.Login(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRegisterCustomerCreatesUserAndToken(t *testing.T) {
+	repo := &fakeRegistryStore{}
+	h := NewHandler(repo, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/customers", strings.NewReader(`{
+		"name": "Ivan",
+		"email": "ivan@example.com",
+		"phone": "+79001234567",
+		"password": "strongpass123"
+	}`))
+	rec := httptest.NewRecorder()
+
+	h.RegisterCustomer(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if repo.customer == nil {
+		t.Fatal("customer was not saved")
+	}
+	if repo.customer.PasswordHash == "" || repo.customer.PasswordHash == "strongpass123" {
+		t.Fatal("customer password was not hashed")
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("cannot decode response: %v", err)
+	}
+	if body["token"] == "" {
+		t.Fatalf("token is empty in response: %s", rec.Body.String())
+	}
+	if body["role"] != "customer" {
+		t.Fatalf("role = %v, want customer", body["role"])
+	}
+}
+
+func TestRegisterCustomerReturnsExistingForSamePassword(t *testing.T) {
+	hash, err := auth.HashPassword("strongpass123")
+	if err != nil {
+		t.Fatalf("HashPassword returned error: %v", err)
+	}
+	repo := &fakeRegistryStore{customer: &store.Customer{
+		ID:           "customer-1",
+		Name:         "Ivan",
+		Email:        "ivan@example.com",
+		PasswordHash: hash,
+	}}
+	h := NewHandler(repo, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/customers", strings.NewReader(`{
+		"name": "Ivan",
+		"email": "ivan@example.com",
+		"password": "strongpass123"
+	}`))
+	rec := httptest.NewRecorder()
+
+	h.RegisterCustomer(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"existing":true`) {
+		t.Fatalf("body does not mark existing user: %s", rec.Body.String())
+	}
+}
+
+func TestRegisterOperatorCreatesUserAndToken(t *testing.T) {
+	repo := &fakeRegistryStore{}
+	h := NewHandler(repo, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/operators", strings.NewReader(`{
+		"name": "Operator",
+		"license": "LIC-1",
+		"email": "op@example.com",
+		"password": "strongpass123"
+	}`))
+	rec := httptest.NewRecorder()
+
+	h.RegisterOperator(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if repo.operator == nil {
+		t.Fatal("operator was not saved")
+	}
+	if repo.operator.PasswordHash == "" || repo.operator.PasswordHash == "strongpass123" {
+		t.Fatal("operator password was not hashed")
+	}
+	if !strings.Contains(rec.Body.String(), `"role":"operator"`) {
+		t.Fatalf("body does not contain operator role: %s", rec.Body.String())
 	}
 }
 

@@ -94,6 +94,29 @@ func TestConfirmPricePublishesPayload(t *testing.T) {
 	}
 }
 
+func TestConfirmPriceRejectsInvalidPayload(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		OperatorID: "operator-1",
+	}}, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/confirm-price", strings.NewReader(`{
+		"operator_id": "operator-1",
+		"accepted_price": 0
+	}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ConfirmPrice(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
 func TestOfferPriceRequiresOperatorRole(t *testing.T) {
 	token, err := auth.NewToken("customer-1", "customer", "test-secret")
 	if err != nil {
@@ -107,6 +130,46 @@ func TestOfferPriceRequiresOperatorRole(t *testing.T) {
 	h.OfferPrice(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestOfferPriceStoresOperatorOffer(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusSearching,
+	}}
+	h := NewHandler(repo, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/offer", strings.NewReader(`{"price":1000}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.OfferPrice(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if repo.order.OperatorID != "operator-1" || repo.order.OfferedPrice != 1000 || repo.order.Status != store.StatusMatched {
+		t.Fatalf("offer was not stored correctly: %+v", repo.order)
+	}
+}
+
+func TestOfferPriceReturnsNotFoundForUnknownOrder(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeContractStore{}, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/offer", strings.NewReader(`{"price":1000}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.OfferPrice(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 
@@ -127,5 +190,29 @@ func TestConfirmCompletionRequiresOwner(t *testing.T) {
 	h.ConfirmCompletion(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestConfirmCompletionMarksOrderCompleted(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusCompletedPending,
+	}}
+	h := NewHandler(repo, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/confirm-completion", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ConfirmCompletion(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if repo.order.Status != store.StatusCompleted {
+		t.Fatalf("status = %q, want %q", repo.order.Status, store.StatusCompleted)
 	}
 }
