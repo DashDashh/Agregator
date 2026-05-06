@@ -12,7 +12,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
-// RegisterOperator handles POST /operators.
+// RegisterOperator обрабатывает POST /operators.
 func (h *Handler) RegisterOperator(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name     string `json:"name"`
@@ -90,7 +90,7 @@ func (h *Handler) RegisterOperator(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// FindOperator handles GET /operators?email=...
+// FindOperator обрабатывает GET /operators?email=...
 func (h *Handler) FindOperator(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.URL.Query().Get("email"))
 	if email == "" {
@@ -107,7 +107,7 @@ func (h *Handler) FindOperator(w http.ResponseWriter, r *http.Request) {
 	httpx.Respond(w, http.StatusOK, op)
 }
 
-// GetOperator handles GET /operators/{id}.
+// GetOperator обрабатывает GET /operators/{id}.
 func (h *Handler) GetOperator(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {

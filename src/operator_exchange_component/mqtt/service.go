@@ -11,6 +11,7 @@ import (
 	paho "github.com/eclipse/paho.mqtt.golang"
 
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
@@ -19,11 +20,11 @@ import (
 type Service struct {
 	client paho.Client
 	cfg    *config.Config
-	store  *store.Store
+	store  operator_exchange_component.Store
 }
 
 // NewService подключается к MQTT брокеру и возвращает готовый сервис
-func NewService(cfg *config.Config, s *store.Store) (*Service, error) {
+func NewService(cfg *config.Config, s operator_exchange_component.Store) (*Service, error) {
 	opts := paho.NewClientOptions()
 
 	broker := cfg.MQTTBroker

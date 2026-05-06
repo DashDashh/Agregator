@@ -1,25 +1,40 @@
-# Component Layout
+# Структура компонентов
 
-Trusted backend code is grouped by component ownership under `src`.
+Доверенный backend-код сгруппирован в `src` по зонам ответственности компонентов.
 
-## Components
+## Компоненты
 
-- `gateway` - process entrypoint, HTTP router, middleware, config, internal bus routing.
-- `registry_component` - customer/operator registration, login, password hashing, token handling.
-- `orders_component` - order creation, order lookup, executor search commands.
-- `contracts_component` - price confirmation, completion confirmation, dispute/contract commands.
-- `analytics_component` - analytics command handling.
-- `operator_exchange_component` - trusted adapters for external operator messaging over Kafka/MQTT.
+- `gateway` - точка запуска процесса, HTTP router, middleware, конфигурация, внутренняя маршрутизация bus-сообщений.
+- `registry_component` - регистрация заказчиков/эксплуатантов, вход, хеширование паролей, токены.
+- `orders_component` - создание заказов, просмотр заказов, команды поиска/выбора исполнителя.
+- `contracts_component` - подтверждение цены, подтверждение выполнения, споры и контрактные команды.
+- `analytics_component` - обработка аналитических команд.
+- `operator_exchange_component` - доверенные адаптеры обмена с внешними эксплуатантами через Kafka/MQTT.
 
-## Shared Code
+## Общий код
 
-`shared` is not a runtime component. It contains contracts and adapters that are still shared while
-the project runs as one Go process:
+`shared` не является runtime-компонентом. Здесь лежат контракты и адаптеры, которые пока остаются
+общими, потому что проект запускается как один Go-процесс:
 
-- `shared/models` - message and payload contracts.
-- `shared/response` - bus response helpers.
-- `shared/httpx` - HTTP JSON response helpers.
-- `shared/store` - PostgreSQL persistence adapter.
+- `shared/models` - контракты сообщений и payload-структуры.
+- `shared/domain` - доменные типы заказов, заказчиков и эксплуатантов.
+- `shared/response` - helpers для bus-ответов.
+- `shared/httpx` - helpers для HTTP JSON-ответов.
+- `shared/store` - PostgreSQL-адаптер хранения.
 
-Domain HTTP handlers depend on small local interfaces instead of a concrete `*store.Store`.
-This keeps the current behavior intact while making the next split into separate services smaller.
+Доменные HTTP-обработчики зависят от небольших локальных интерфейсов, а не от конкретного
+`*store.Store`. Это сохраняет текущее поведение и упрощает последующее выделение компонентов
+в отдельные сервисы.
+
+## Доменные порты
+
+Компоненты объявляют небольшие порты хранения рядом со своим доменным кодом:
+
+- `registry_component.Store`
+- `orders_component.Store`
+- `contracts_component.Store`
+- `operator_exchange_component.Store`
+
+`shared/store.Store` сейчас реализует эти порты для сборки в одном процессе. Когда компонент будет
+выноситься в отдельный сервис, этот порт можно будет подключить к локальному DB-адаптеру,
+message-клиенту или API-клиенту без изменения HTTP-обработчиков компонента.

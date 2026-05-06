@@ -9,6 +9,7 @@ import (
 
 	busgateway "github.com/kirilltahmazidi/aggregator/src/gateway/bus/gateway"
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 	kafkago "github.com/segmentio/kafka-go"
@@ -23,10 +24,10 @@ type Service struct {
 	operatorReader *kafkago.Reader // читает ответы эксплуатантов из operator.responses
 	dlt            *kafkago.Writer // dead-letter topic для нечитаемых сообщений
 	gateway        *busgateway.Gateway
-	store          *store.Store // для обновления статусов заказов
+	store          operator_exchange_component.Store // для обновления статусов заказов
 }
 
-func NewService(cfg *config.Config, g *busgateway.Gateway, s *store.Store) *Service {
+func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_component.Store) *Service {
 	dialer := newDialer()
 	transport := newTransport(dialer)
 

@@ -10,7 +10,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 )
 
-// ConfirmPrice handles POST /orders/{id}/confirm-price.
+// ConfirmPrice обрабатывает POST /orders/{id}/confirm-price.
 func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {
@@ -79,7 +79,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// OfferPrice handles POST /orders/{id}/offer.
+// OfferPrice обрабатывает POST /orders/{id}/offer.
 func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {
@@ -125,7 +125,7 @@ func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ConfirmCompletion handles POST /orders/{id}/confirm-completion.
+// ConfirmCompletion обрабатывает POST /orders/{id}/confirm-completion.
 func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {

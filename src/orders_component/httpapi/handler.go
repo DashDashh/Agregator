@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/kirilltahmazidi/aggregator/src/orders_component"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
@@ -13,22 +14,13 @@ type Publisher interface {
 	PublishOrder(ctx context.Context, order *store.Order) error
 }
 
-type OrderStore interface {
-	GetCustomer(id string) (*store.Customer, bool)
-	SaveOrder(o *store.Order) error
-	GetOrder(id string) (*store.Order, bool)
-	ListOrders() []*store.Order
-	ListOrdersByCustomer(customerID string) []*store.Order
-	UpdateOrderStatus(id string, status store.OrderStatus) bool
-}
-
 type Handler struct {
-	store      OrderStore
+	store      orders_component.Store
 	publisher  Publisher
 	authSecret string
 }
 
-func NewHandler(s OrderStore, p Publisher, authSecret string) *Handler {
+func NewHandler(s orders_component.Store, p Publisher, authSecret string) *Handler {
 	return &Handler{store: s, publisher: p, authSecret: authSecret}
 }
 

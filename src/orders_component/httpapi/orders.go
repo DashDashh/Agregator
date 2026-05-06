@@ -12,7 +12,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
-// CreateOrder handles POST /orders.
+// CreateOrder обрабатывает POST /orders.
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {
@@ -92,7 +92,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	httpx.Respond(w, http.StatusCreated, order)
 }
 
-// ListOrders handles GET /orders.
+// ListOrders обрабатывает GET /orders.
 func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {
@@ -121,7 +121,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	httpx.Respond(w, http.StatusOK, orders)
 }
 
-// GetOrder handles GET /orders/{id}.
+// GetOrder обрабатывает GET /orders/{id}.
 func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {

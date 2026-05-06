@@ -3,28 +3,17 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/kirilltahmazidi/aggregator/src/registry_component"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
-	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
-type RegistryStore interface {
-	SaveCustomer(c *store.Customer) error
-	GetCustomer(id string) (*store.Customer, bool)
-	GetCustomerByEmail(email string) (*store.Customer, bool)
-	SetCustomerPasswordHash(id, passwordHash string) bool
-	SaveOperator(op *store.Operator) error
-	GetOperator(id string) (*store.Operator, bool)
-	GetOperatorByEmail(email string) (*store.Operator, bool)
-	SetOperatorPasswordHash(id, passwordHash string) bool
-}
-
 type Handler struct {
-	store      RegistryStore
+	store      registry_component.Store
 	authSecret string
 }
 
-func NewHandler(s RegistryStore, authSecret string) *Handler {
+func NewHandler(s registry_component.Store, authSecret string) *Handler {
 	return &Handler{store: s, authSecret: authSecret}
 }
 

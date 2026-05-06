@@ -15,7 +15,7 @@ type Backend interface {
 	PublishConfirmPrice(ctx context.Context, payload models.ConfirmPricePayload) error
 }
 
-// MultiPublisher distributes publish operations across multiple backends.
+// MultiPublisher отправляет сообщения во все настроенные backend-адаптеры.
 type MultiPublisher struct {
 	backends []Backend
 }

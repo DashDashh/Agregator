@@ -12,7 +12,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
-// RegisterCustomer handles POST /customers.
+// RegisterCustomer обрабатывает POST /customers.
 func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name     string `json:"name"`
@@ -90,7 +90,7 @@ func (h *Handler) RegisterCustomer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// FindCustomer handles GET /customers?email=...
+// FindCustomer обрабатывает GET /customers?email=...
 func (h *Handler) FindCustomer(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.URL.Query().Get("email"))
 	if email == "" {
@@ -107,7 +107,7 @@ func (h *Handler) FindCustomer(w http.ResponseWriter, r *http.Request) {
 	httpx.Respond(w, http.StatusOK, c)
 }
 
-// GetCustomer handles GET /customers/{id}.
+// GetCustomer обрабатывает GET /customers/{id}.
 func (h *Handler) GetCustomer(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAuth(w, r)
 	if !ok {

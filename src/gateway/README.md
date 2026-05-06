@@ -14,9 +14,9 @@ Gateway связывает действия со следующими компо
 - `contracts_component`
 - `analytics_component`
 
-HTTP routing, middleware, publisher fan-out and configuration also live inside
-`src/gateway`, because this is the system entry adapter. Business HTTP handlers
-live in their owning components:
+HTTP routing, middleware, publisher fan-out и конфигурация тоже находятся внутри
+`src/gateway`, потому что это входной адаптер системы. Бизнесовые HTTP-обработчики
+лежат в компонентах, которым они принадлежат:
 
 - `src/registry_component/httpapi`
 - `src/orders_component/httpapi`
