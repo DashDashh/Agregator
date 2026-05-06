@@ -2,548 +2,393 @@
 
 Агрегатор страховых заявок на доставку дронами.
 
+Проект можно запускать в двух режимах:
+
+- обычный режим: gateway вызывает серверные компоненты внутри одного процесса;
+- микросервисный режим: gateway принимает HTTP-запросы и сообщения Kafka, а `registry`, `orders`, `contracts`, `analytics` запускаются отдельными сервисами и обмениваются сообщениями через Kafka.
+
 ## Стек
 
-- **Go 1.24** — сервис
-- **PostgreSQL 16** — хранение заказчиков, эксплуатантов и заказов
-- **Apache Kafka** — основной транспорт сообщений
-- **MQTT (Mosquitto)** — дополнительный транспорт для обмена с эксплуатантами
-- **Docker Compose** — запуск всего окружения одной командой
+- Go 1.24
+- PostgreSQL 16
+- Apache Kafka
+- MQTT для дополнительного обмена с эксплуатантами
+- Docker Compose
 
-## Запуск
+## Архитектура
+
+Основные серверные компоненты:
+
+| Компонент | Назначение | Запуск |
+| --- | --- | --- |
+| `gateway` | HTTP API, фронтенд, входной системный топик Kafka, маршрутизация | `src/gateway` |
+| `registry` | заказчики, эксплуатанты, авторизация | `cmd/registry` |
+| `orders` | создание заказов и подбор исполнителя | `cmd/orders` |
+| `contracts` | цена, подтверждение, выполнение, спор | `cmd/contracts` |
+| `analytics` | аналитика | `cmd/analytics` |
+| `operator_exchange` | обмен с внешним сервисом эксплуатантов через Kafka/MQTT | `src/operator_exchange_component` |
+
+Общий код находится в `src/shared`: доменные типы, модели сообщений, ответы, адаптер PostgreSQL, Kafka-настройки и общая шина компонентов.
+
+Фронтенд, PostgreSQL, Kafka и MQTT считаются внешней инфраструктурой, а не доверенными серверными компонентами.
+
+## Режимы запуска
+
+### Обычный локальный режим с Kafka
 
 ```bash
 docker network create drones_net
-docker compose --profile kafka up -d --build
+make docker-up-dev
 ```
 
-Kafka в этом репозитории больше не поднимается: предполагается, что брокер уже доступен в общей Docker-сети `drones_net` по адресу `kafka:29092`.
+Если сеть уже существует, сообщение `network with name drones_net already exists` можно игнорировать.
 
-Сервис поднимется на `http://localhost:8081`.
+В этом режиме поднимаются:
 
-Для локальной разработки можно поверх основного compose подключить dev-слой с Kafka:
+- `aggregator`
+- `postgres`
+- `zookeeper`
+- `kafka`
+- `kafka-init`
+
+Gateway работает с компонентами внутри процесса. Это режим совместимости.
+
+### Микросервисный режим
 
 ```bash
 docker network create drones_net
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka up -d --build
+make docker-up-micro
 ```
 
-Этот сценарий поднимет локальные `zookeeper`, `kafka` и `kafka-init`, не меняя основной `docker-compose.yml`.
+В этом режиме поднимаются:
 
-## Фронтенд
+- `aggregator`
+- `registry`
+- `orders`
+- `contracts`
+- `analytics`
+- `postgres`
+- `zookeeper`
+- `kafka`
+- `kafka-init`
 
-Встроенная панель доступна по адресу:
+`kafka-init` создает нужные топики и завершается с кодом `0`. Это нормально.
+
+Проверить контейнеры:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices ps -a
+```
+
+Ожидаемо:
+
+- `aggregator` — `Up`
+- `registry` — `Up`
+- `orders` — `Up`
+- `contracts` — `Up`
+- `analytics` — `Up`
+- `postgres` — `Up (healthy)`
+- `zookeeper` — `Up`
+- `kafka` — `Up`
+- `kafka-init` — `Exited (0)`
+
+## Проверка работоспособности
+
+### Бэкенд
+
+```bash
+curl http://localhost:8081/health
+```
+
+Ожидаемый ответ:
+
+```json
+{"status":"ok"}
+```
+
+### Фронтенд
+
+Открыть в браузере:
 
 ```text
 http://localhost:8081
 ```
 
-Основной пользовательский сценарий:
+Frontend отдается gateway из папки `frontend`.
 
-1. Зарегистрировать заказчика или эксплуатанта через форму на стартовом экране.
-2. Войти по `email` и паролю.
-3. Заказчик создаёт заказ и видит только свои заказы.
-4. Эксплуатант видит список заказов и может предложить цену вручную.
-5. После предложения цены заказчик подтверждает цену, и заказ переходит в статус `confirmed`.
+### Логи
 
-> Ручная кнопка эксплуатанта `Предложить цену` нужна для демонстрации без отдельного сервиса эксплуатанта. Интеграционный путь через Kafka сохраняется: внешний эксплуатант должен читать `operator.requests` и писать `price_offer` в `operator.responses`.
+Для микросервисного режима:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices logs -f aggregator registry orders contracts analytics kafka
+```
+
+Для обычного режима разработки:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka logs -f aggregator kafka
+```
+
+## Быстрая проверка через HTTP
+
+### 1. Зарегистрировать заказчика
+
+```bash
+curl -X POST http://localhost:8081/customers \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Иван","email":"ivan@example.com","password":"strongpass123","phone":"+79001234567"}'
+```
+
+Скопировать `token` и `user.id` из ответа:
+
+```bash
+CUSTOMER_TOKEN='сюда_токен_заказчика'
+CUSTOMER_ID='сюда_id_заказчика'
+```
+
+### 2. Создать заказ
+
+```bash
+curl -X POST http://localhost:8081/orders \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{"description":"Доставка документов","budget":1000,"from_lat":55.75,"from_lon":37.61,"to_lat":55.76,"to_lon":37.62,"mission_type":"delivery"}'
+```
+
+Скопировать `id` заказа:
+
+```bash
+ORDER_ID='сюда_id_заказа'
+```
+
+### 3. Зарегистрировать эксплуатанта
+
+```bash
+curl -X POST http://localhost:8081/operators \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Оператор 1","email":"operator@example.com","password":"strongpass123","license":"LIC-001"}'
+```
+
+Скопировать `token` и `user.id`:
+
+```bash
+OPERATOR_TOKEN='сюда_токен_эксплуатанта'
+OPERATOR_ID='сюда_id_эксплуатанта'
+```
+
+### 4. Предложить цену
+
+```bash
+curl -X POST http://localhost:8081/orders/$ORDER_ID/offer \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  -d '{"price":900}'
+```
+
+### 5. Подтвердить цену заказчиком
+
+```bash
+curl -X POST http://localhost:8081/orders/$ORDER_ID/confirm-price \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{"operator_id":"'"$OPERATOR_ID"'","accepted_price":900}'
+```
+
+### 6. Проверить заказ
+
+```bash
+curl http://localhost:8081/orders/$ORDER_ID \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+```
+
+## Тесты и сборка
+
+Запуск всех Go-тестов с покрытием:
+
+```bash
+GOCACHE=/tmp/go-build go test ./... -cover
+```
+
+Сборка gateway и компонентных сервисов:
+
+```bash
+GOCACHE=/tmp/go-build go build ./src/gateway ./cmd/registry ./cmd/orders ./cmd/contracts ./cmd/analytics
+```
+
+Проверка Docker Compose конфигурации:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices config
+```
+
+Сборка Docker-образов:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices build aggregator registry orders contracts analytics
+```
+
+## Переменные окружения
+
+| Переменная | Значение по умолчанию | Назначение |
+| --- | --- | --- |
+| `COMPONENT_DISPATCH_MODE` | `inprocess` | `inprocess` или `broker`; режим маршрутизации между gateway и компонентами |
+| `KAFKA_BROKER` | `localhost:9092` / `kafka:9092` в dev compose | адрес Kafka |
+| `SYSTEM_NAMESPACE` | пусто | префикс для системных топиков |
+| `OPERATOR_TRANSPORT` | `kafka` | `kafka` или `both`; обмен с эксплуатантами |
+| `AUTH_SECRET` | dev-значение | секрет для токенов |
+| `DATABASE_URL` | dev-значение | подключение к PostgreSQL |
+| `COMMISSION_RATE` | `0.1` | комиссия агрегатора |
 
 ## Режим транспорта
 
-Для обмена с эксплуатантами (`operator.requests` / `operator.responses`) режим выбирается через переменную окружения `OPERATOR_TRANSPORT`:
+Есть два независимых уровня транспорта.
 
-- `kafka` — только Kafka (режим по умолчанию)
-- `both` — Kafka + MQTT одновременно
+`COMPONENT_DISPATCH_MODE` управляет связью между gateway и серверными компонентами:
 
-> Важно: системный входной топик и компонентные топики формируются по правилам `systems.*` и `components.*`. Для изоляции нескольких экземпляров используется `SYSTEM_NAMESPACE`, который автоматически добавляется префиксом ко всем системным и компонентным топикам.
+- `inprocess` — gateway вызывает обработчики компонентов внутри своего процесса;
+- `broker` — gateway отправляет запросы в Kafka topics отдельных компонентов.
 
-Пример для `docker-compose.yml`:
-
-```yaml
-environment:
-  OPERATOR_TRANSPORT: ${OPERATOR_TRANSPORT:-kafka}
-```
-
-Порядок старта автоматический: сначала PostgreSQL (с healthcheck), затем агрегатор. Kafka должен быть поднят отдельно в той же внешней сети Docker.
-
-> В текущем `docker-compose.yml` MQTT-брокер тоже не поднимается, поэтому для локального compose-старта используйте Kafka-режим. Запуск выглядит так: `docker compose --profile kafka up -d --build`.
-
-## API
-
-### Проверка здоровья
-
-```
-GET /health
-```
-
-**Ответ:**
-
-```json
-{"status": "ok"}
-```
-
----
-
-### Заказчики
-
-#### Зарегистрировать заказчика
-
-```
-POST /customers
-```
-
-**Тело запроса:**
-
-```json
-{
-  "name": "Иван Иванов",
-  "email": "ivan@mail.ru",
-  "password": "strongpass123",
-  "phone": "+79001234567"
-}
-```
-
-**Ответ `201`:**
-
-```json
-{
-  "token": "eyJ...",
-  "role": "customer",
-  "user": {
-    "id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-    "name": "Иван Иванов",
-    "email": "ivan@mail.ru",
-    "phone": "+79001234567"
-  }
-}
-```
-
----
-
-### Эксплуатанты
-
-#### Зарегистрировать эксплуатанта
-
-```
-POST /operators
-```
-
-**Тело запроса:**
-
-```json
-{
-  "name": "ООО АэроДоставка",
-  "license": "LIC-2024-001",
-  "email": "ops@aerodostavka.ru",
-  "password": "strongpass123"
-}
-```
-
-**Ответ `201`:**
-
-```json
-{
-  "token": "eyJ...",
-  "role": "operator",
-  "user": {
-    "id": "a1b2c3d4-...",
-    "name": "ООО АэроДоставка",
-    "license": "LIC-2024-001",
-    "email": "ops@aerodostavka.ru"
-  }
-}
-```
-
----
-
-### Авторизация
-
-#### Войти в аккаунт
-
-```
-POST /auth/login
-```
-
-**Тело запроса:**
-
-```json
-{
-  "role": "customer",
-  "email": "ivan@mail.ru",
-  "password": "strongpass123"
-}
-```
-
-**Ответ `200`:**
-
-```json
-{
-  "token": "eyJ...",
-  "role": "customer",
-  "user": {
-    "id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-    "name": "Иван Иванов",
-    "email": "ivan@mail.ru",
-    "phone": "+79001234567"
-  }
-}
-```
-
-Защищённые ручки требуют заголовок:
-
-```http
-Authorization: Bearer <token>
-```
-
-### Заказы
-
-#### Создать заказ
-
-```
-POST /orders
-```
-
-> Требует авторизации заказчика. `customer_id` берётся из токена. При создании заказ автоматически отправляется эксплуатантам через выбранный транспорт (`operator.requests`): Kafka либо Kafka+MQTT.
-
-**Тело запроса (delivery — по умолчанию):**
-
-```json
-{
-  "customer_id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-  "description": "Доставить документы из офиса на склад",
-  "budget": 2500.00,
-  "mission_type": "delivery",
-  "security_goals": ["ЦБ1", "ЦБ3"],
-  "from_lat": 55.7558,
-  "from_lon": 37.6173,
-  "to_lat": 55.8000,
-  "to_lon": 37.6500
-}
-```
-
-**Тело запроса (agro):**
-
-```json
-{
-  "customer_id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-  "description": "Обработать поле",
-  "budget": 4000.00,
-  "mission_type": "agro",
-  "security_goals": ["ЦБ2", "ЦБ4"],
-  "top_left_lat": 55.90,
-  "top_left_lon": 37.40,
-  "bottom_right_lat": 55.80,
-  "bottom_right_lon": 37.60
-}
-```
-
-**Ответ `201`:**
-
-```json
-{
-  "id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "customer_id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-  "description": "Доставить документы из офиса на склад",
-  "budget": 2500,
-  "from_lat": 55.7558,
-  "from_lon": 37.6173,
-  "to_lat": 55.8,
-  "to_lon": 37.65,
-  "mission_type": "delivery",
-  "security_goals": ["ЦБ1", "ЦБ3"],
-  "top_left_lat": 0,
-  "top_left_lon": 0,
-  "bottom_right_lat": 0,
-  "bottom_right_lon": 0,
-  "commission_amount": 0,
-  "operator_amount": 0,
-  "status": "searching",
-  "created_at": "2026-03-04T17:31:12.658581072Z"
-}
-```
-
----
-
-#### Получить список всех заказов
-
-```
-GET /orders
-```
-
-> Заказчик получает только свои заказы. Эксплуатант видит общий список.
-
-**Ответ `200`:** массив объектов заказа (sorted by `created_at DESC`).
-
----
-
-#### Получить заказ по ID
-
-```
-GET /orders/{id}
-```
-
-**Ответ `200`:** объект заказа.
-
-**Ответ `404`:**
-
-```json
-{"error": "заказ не найден"}
-```
-
----
-
-#### Подтвердить цену эксплуатанта
-
-```
-POST /orders/{id}/confirm-price
-```
-
-> Пользователь принимает оферту от эксплуатанта. Агрегатор переводит заказ в статус `confirmed`
-> и отправляет эксплуатанту сообщение `confirm_price` через выбранный транспорт (`operator.requests`).
-
-**Тело запроса:**
-
-```json
-{
-  "operator_id": "a1b2c3d4-...",
-  "accepted_price": 2200.00
-}
-```
-
-**Ответ `200` (учитывает сервисный сбор):**
-
-```json
-{
-  "order_id": "e16d6d12-...",
-  "operator_id": "a1b2c3d4-...",
-  "accepted_price": 2200.00,
-  "commission_amount": 220.0,
-  "operator_amount": 1980.0,
-  "status": "confirmed"
-}
-```
-
-> Сбор считается как `accepted_price * COMMISSION_RATE` (env, по умолчанию 0.1). Оператор получает `accepted_price - commission_amount`.
-
-#### Предложить цену вручную
-
-```
-POST /orders/{id}/offer
-```
-
-> Dev/fallback-режим для фронта. В штатной интеграции оферта приходит от эксплуатанта через Kafka сообщением `price_offer`.
-
-**Тело запроса:**
-
-```json
-{
-  "price": 4500.00
-}
-```
-
-**Ответ `200`:**
-
-```json
-{
-  "order_id": "e16d6d12-...",
-  "operator_id": "a1b2c3d4-...",
-  "offered_price": 4500.00,
-  "status": "matched"
-}
-```
-
-#### Подтвердить выполнение заказчиком
-
-```
-POST /orders/{id}/confirm-completion
-```
-
-**Ответ `200`:**
-
-```json
-{
-  "order_id": "...",
-  "status": "completed"
-}
-```
-
----
-
-**Статусы заказа:**
-
-| Статус                       | Когда выставляется                                                                                                       |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `pending`                        | Заказ создан в БД, но ещё не опубликован эксплуатантам                                                                                  |
-| `searching`                      | Агрегатор опубликовал заказ в `operator.requests` через выбранный транспорт            |
-| `matched`                        | Эксплуатант прислал оферту цены (`price_offer`) или предложил цену через fallback-ручку `/offer`                                                             |
-| `confirmed`                      | Пользователь принял цену (`POST .../confirm-price`)                                                               |
-| `completed_pending_confirmation` | Оператор сообщил об успехе (`order_result` success=true), ждём подтверждения заказчика |
-| `completed`                      | Заказчик подтвердил выполнение (`POST .../confirm-completion`)                                              |
-| `dispute`                        | Эксплуатант сообщил о срыве (`order_result` success=false)                                                      |
-
----
-
-## Пример полного запроса
+Для запуска через брокер используйте:
 
 ```bash
-# 1. Создать заказчика
-CUSTOMER_ID=$(curl -s -X POST http://localhost:8081/customers \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Иван Иванов","email":"ivan@example.com","phone":"+79001234567"}' \
-  | jq -r .id)
-echo "CUSTOMER_ID=$CUSTOMER_ID"
-
-# 2. Создать эксплуатанта
-OPERATOR_ID=$(curl -s -X POST http://localhost:8081/operators \
-  -H "Content-Type: application/json" \
-  -d '{"name":"ООО Дроны","license":"LIC-001","email":"ops@example.com"}' \
-  | jq -r .id)
-echo "OPERATOR_ID=$OPERATOR_ID"
-
-# 3. Создать заказ (delivery) — уйдёт в operator.requests через выбранный транспорт
-ORDER_ID=$(curl -s -X POST http://localhost:8081/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customer_id":"'"'"$CUSTOMER_ID'"'"",
-    "description":"Доставить документы из офиса на склад",
-    "budget":3000,
-    "mission_type":"delivery",
-    "security_goals":["ЦБ1"],
-    "from_lat":55.7558,"from_lon":37.6173,
-    "to_lat":55.8000,"to_lon":37.6500,
-    "top_left_lat":0,"top_left_lon":0,
-    "bottom_right_lat":0,"bottom_right_lon":0
-  }' \
-  | jq -r .id)
-echo "ORDER_ID=$ORDER_ID"
-
-# 4. Эксплуатант присылает оферту цены через Kafka
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka exec -T kafka \
-  kafka-console-producer \
-  --bootstrap-server kafka:9092 \
-  --topic components.agregator.operator.responses <<EOF
-{"action":"price_offer","sender":"operator_service","correlation_id":"$ORDER_ID","payload":{"order_id":"$ORDER_ID","operator_id":"$OPERATOR_ID","operator_name":"ООО Дроны","price":4500,"estimated_time_minutes":25,"provided_security_goals":["ЦБ1"],"insurance_coverage":"Лимит 1 млн"}}
-EOF
-
-# 5. Подтвердить цену эксплуатанта (учитывается COMMISSION_RATE)
-curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-price \
-  -H "Content-Type: application/json" \
-  -d '{"operator_id":"'"'"$OPERATOR_ID'"'"","accepted_price":4500}' | jq
-
-# 6. Эксплуатант сообщает об успешном выполнении через Kafka
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka exec -T kafka \
-  kafka-console-producer \
-  --bootstrap-server kafka:9092 \
-  --topic components.agregator.operator.responses <<EOF
-{"action":"order_result","sender":"operator_service","correlation_id":"$ORDER_ID","payload":{"order_id":"$ORDER_ID","operator_id":"$OPERATOR_ID","success":true,"reason":"","total_price":4500}}
-EOF
-
-# 7. Подтвердить выполнение заказчиком
-curl -s -X POST http://localhost:8081/orders/$ORDER_ID/confirm-completion \
-  -H "Content-Type: application/json" -d '{}' | jq
-
-# 8. Проверить заказ и список
-curl -s http://localhost:8081/orders/$ORDER_ID | jq
-curl -s http://localhost:8081/orders | jq
+make docker-up-micro
 ```
 
----
+`OPERATOR_TRANSPORT` управляет обменом с внешним сервисом эксплуатантов через `operator.requests` и `operator.responses`:
+
+- `kafka` — только Kafka, режим по умолчанию;
+- `both` — Kafka и MQTT одновременно.
+
+Пример запуска с Kafka + MQTT для эксплуатантов:
+
+```bash
+OPERATOR_TRANSPORT=both make docker-up-micro
+```
+
+Системный входной топик и топики ответов могут получать префикс `SYSTEM_NAMESPACE`. Если `SYSTEM_NAMESPACE=fleet_1`, то `systems.agregator` превращается в `fleet_1.systems.agregator`.
+
+## Топики Kafka
+
+Основные топики агрегатора:
+
+| Топик | Кто читает |
+| --- | --- |
+| `systems.agregator` | gateway |
+| `components.agregator.responses` | внешние системы |
+| `components.agregator.registry` | сервис registry |
+| `components.agregator.orders` | сервис orders |
+| `components.agregator.contracts` | сервис contracts |
+| `components.agregator.analytics` | сервис analytics |
+| `components.agregator.operator.requests` | сервис эксплуатантов |
+| `components.agregator.operator.responses` | агрегатор |
+| `errors.dead_letters` | мониторинг ошибок |
+
+В микросервисном режиме gateway получает сообщение из `systems.agregator`, определяет компонент по `action` и отправляет запрос в один из `components.agregator.*`.
 
 ## Форматы сообщений
 
-В межсистемном взаимодействии отправитель публикует сообщение в системный топик получателя (`systems.<system_name>`) и передаёт нужное действие в поле верхнего уровня `action`. Маршрутизацию `action -> component topic` выполняет gateway системы.
+В межсистемном взаимодействии отправитель публикует сообщение в системный топик получателя, например `systems.agregator`. Gateway читает системный топик, смотрит поле `action` и маршрутизирует запрос в нужный компонент.
 
-### Агрегатор → Эксплуатант (`<prefix>.operator.requests`)
-
-Все сообщения завёрнуты в стандартный конверт:
+### Входящий запрос
 
 ```json
 {
-  "action": "<тип_действия>",
-  "payload": { ... },
-  "sender": "agregator",
-  "correlation_id": "<id_корреляции>",
-  "reply_to": "<optional_reply_topic>",
-  "timestamp": "2026-04-01T12:00:00Z"
+  "action": "create_order",
+  "payload": {
+    "customer_id": "customer-1",
+    "description": "Доставка документов",
+    "budget": 3000,
+    "mission_type": "delivery",
+    "from_lat": 55.7558,
+    "from_lon": 37.6173,
+    "to_lat": 55.8,
+    "to_lon": 37.65
+  },
+  "sender": "external_system",
+  "correlation_id": "order-1",
+  "reply_to": "components.agregator.responses",
+  "timestamp": "2026-05-06T12:00:00Z"
 }
 ```
 
-Формат ответа (gateway/component -> отправитель):
+Вместо `action` также поддерживается поле `type`, а вместо `correlation_id` — `request_id`. Это сделано для совместимости с разными отправителями.
+
+### Ответ
 
 ```json
 {
   "action": "response",
-  "payload": { ... },
+  "payload": {
+    "order_id": "order-1",
+    "status": "pending",
+    "message": "order created, awaiting executor selection (stub)"
+  },
   "sender": "agregator",
-  "correlation_id": "<id_корреляции_исходного_запроса>",
+  "correlation_id": "order-1",
   "success": true,
-  "timestamp": "2026-04-01T12:00:01Z"
+  "timestamp": "2026-05-06T12:00:01Z"
 }
 ```
 
-При ошибке: `"success": false` и поле `"error": "..."`.
+При ошибке `success` будет `false`, а причина будет в поле `error`.
 
-#### `create_order` — новый заказ (отправляется при `POST /orders`)
+### Сообщение агрегатора эксплуатанту
+
+При создании заказа агрегатор публикует сообщение в `components.agregator.operator.requests`:
 
 ```json
 {
   "action": "create_order",
   "sender": "agregator",
-  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
+  "correlation_id": "order-1",
   "payload": {
-    "customer_id": "b9e8b4d6-2318-429b-944c-11e46db1fbfe",
-    "description": "Доставить документы из офиса на склад",
-    "budget": 3000.00,
+    "customer_id": "customer-1",
+    "description": "Доставка документов",
+    "budget": 3000,
     "mission_type": "delivery",
     "security_goals": ["ЦБ1"],
     "from_lat": 55.7558,
     "from_lon": 37.6173,
-    "to_lat": 55.8000,
-    "to_lon": 37.6500,
-    "top_left_lat": 0,
-    "top_left_lon": 0,
-    "bottom_right_lat": 0,
-    "bottom_right_lon": 0
+    "to_lat": 55.8,
+    "to_lon": 37.65
   }
 }
 ```
 
-#### `confirm_price` — пользователь принял цену (отправляется при `POST /orders/{id}/confirm-price`)
+После подтверждения цены агрегатор отправляет эксплуатанту `confirm_price`:
 
 ```json
 {
   "action": "confirm_price",
   "sender": "agregator",
-  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
+  "correlation_id": "order-1",
   "payload": {
-    "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-    "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
-    "accepted_price": 2800.00,
-    "commission_amount": 280.00,
-    "operator_amount": 2520.00
+    "order_id": "order-1",
+    "operator_id": "operator-1",
+    "accepted_price": 2800,
+    "commission_amount": 280,
+    "operator_amount": 2520
   }
 }
 ```
 
----
+### Сообщение эксплуатанта агрегатору
 
-### Эксплуатант → Агрегатор (`<prefix>.operator.responses`)
+Эксплуатант пишет ответы в `components.agregator.operator.responses`.
 
-#### `price_offer` — эксплуатант называет свою цену
-
-Агрегатор сохраняет `operator_id` и `offered_price` в БД, переводит заказ в `matched`.
-Пользователь видит оферту через `GET /orders/{id}`.
+Оферта цены:
 
 ```json
 {
   "action": "price_offer",
   "sender": "operator_service",
-  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
+  "correlation_id": "order-1",
   "payload": {
-    "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-    "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
-    "operator_name": "ООО АэроДоставка",
-    "price": 2800.00,
+    "order_id": "order-1",
+    "operator_id": "operator-1",
+    "operator_name": "Оператор 1",
+    "price": 2800,
     "estimated_time_minutes": 25,
     "provided_security_goals": ["ЦБ1"],
     "insurance_coverage": "Лимит 1 млн"
@@ -551,102 +396,87 @@ curl -s http://localhost:8081/orders | jq
 }
 ```
 
-#### `order_result` — результат выполнения / срыв
-
-Агрегатор переводит заказ в `completed` (success=true) или `dispute` (success=false).
-
-**Успешное выполнение:**
+Результат выполнения:
 
 ```json
 {
   "action": "order_result",
   "sender": "operator_service",
-  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
+  "correlation_id": "order-1",
   "payload": {
-    "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-    "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
+    "order_id": "order-1",
+    "operator_id": "operator-1",
     "success": true,
     "reason": "",
-    "total_price": 2800.00
+    "total_price": 2800
   }
 }
 ```
 
-**Срыв миссии:**
+Отправить тестовое сообщение в Kafka можно так:
 
-```json
-{
-  "action": "order_result",
-  "sender": "operator_service",
-  "correlation_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-  "payload": {
-    "order_id": "e16d6d12-b045-4eb9-bf07-b811a3836e57",
-    "operator_id": "a1b2c3d4-5e6f-7890-abcd-ef1234567890",
-    "success": false,
-    "reason": "Потеря связи с дроном на 3-й минуте полёта",
-    "total_price": 0
-  }
-}
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka exec -T kafka \
+  kafka-console-producer \
+  --bootstrap-server kafka:9092 \
+  --topic components.agregator.operator.responses <<EOF
+{"action":"price_offer","sender":"operator_service","correlation_id":"$ORDER_ID","payload":{"order_id":"$ORDER_ID","operator_id":"$OPERATOR_ID","operator_name":"Оператор 1","price":900,"estimated_time_minutes":25,"provided_security_goals":["ЦБ1"],"insurance_coverage":"Лимит 1 млн"}}
+EOF
 ```
 
----
+## Основные HTTP ручки
 
-## Топики
+| Метод | Путь | Назначение |
+| --- | --- | --- |
+| `GET` | `/health` | проверка сервиса |
+| `POST` | `/customers` | регистрация заказчика |
+| `POST` | `/operators` | регистрация эксплуатанта |
+| `POST` | `/auth/login` | вход |
+| `POST` | `/orders` | создание заказа |
+| `GET` | `/orders` | список заказов |
+| `GET` | `/orders/{id}` | заказ по id |
+| `POST` | `/orders/{id}/offer` | предложение цены эксплуатантом |
+| `POST` | `/orders/{id}/confirm-price` | подтверждение цены заказчиком |
+| `POST` | `/orders/{id}/confirm-completion` | подтверждение выполнения |
 
-Базовые шаблоны:
+Защищенные ручки требуют заголовок:
 
-- `systems.<имя_системы>` — входной топик системы (слушает gateway)
-- `components.<имя_компонента>` — внутренние топики компонентов
-- `errors.dead_letters` — глобальный топик ошибок fire-and-forget
-
-Префикс namespace:
-
-- если `SYSTEM_NAMESPACE` пустой: топики без префикса
-- если `SYSTEM_NAMESPACE=fleet_1`: получаем `fleet_1.systems.<...>` и `fleet_1.components.<...>`
-- `errors.dead_letters` не префиксуется
-
-Текущие топики агрегатора в этом проекте:
-
-- `systems.agregator`
-- `components.agregator.responses`
-- `components.agregator.operator.requests`
-- `components.agregator.operator.responses`
-- `errors.dead_letters`
-
-Пример для `SYSTEM_NAMESPACE=fleet_1`:
-
-- `fleet_1.systems.agregator`
-- `fleet_1.components.agregator.responses`
-- `fleet_1.components.agregator.operator.requests`
-- `fleet_1.components.agregator.operator.responses`
-- `errors.dead_letters`
-
-Основная переменная окружения: `SYSTEM_NAMESPACE`.
-
-| Топик                      | Направление               | Кто читает                        |
-| ------------------------------- | ------------------------------------ | ------------------------------------------ |
-| `systems.agregator`                                   | Внешние → Агрегатор | Gateway агрегатора                 |
-| `components.agregator.responses`                      | Агрегатор → Внешние | Внешние сервисы                    |
-| `components.agregator.operator.requests`              | Агрегатор → Эксп.   | Сервис эксплуатанта                |
-| `components.agregator.operator.responses`             | Эксп. → Агрегатор   | Агрегатор (этот сервис)            |
-| `errors.dead_letters`                                 | Ошибки fire-and-forget | Мониторинг                      |
-
----
-
-## Схема базы данных (orders — ключевые поля)
-
-```
-customers   — заказчики (id, name, email, phone)
-operators   — эксплуатанты (id, name, license, email)
-orders      — заказы (id, customer_id→customers, description, budget,
-                       mission_type,
-                       security_goals[],
-                       from_lat/from_lon/to_lat/to_lon (delivery),
-                       top_left_lat/top_left_lon/bottom_right_lat/bottom_right_lon (agro),
-                       status,
-                       operator_id, offered_price,
-                       commission_amount, operator_amount,
-                       created_at)
+```http
+Authorization: Bearer <token>
 ```
 
-Миграции применяются автоматически при старте сервиса из файла `migrations/001_init.sql`.
+## Статусы заказа
+
+| Статус | Когда выставляется |
+| --- | --- |
+| `pending` | заказ создан в БД |
+| `searching` | заказ опубликован эксплуатантам |
+| `matched` | эксплуатант предложил цену |
+| `confirmed` | заказчик подтвердил цену |
+| `completed_pending_confirmation` | эксплуатант сообщил об успешном выполнении |
+| `completed` | заказчик подтвердил выполнение |
+| `dispute` | эксплуатант сообщил о срыве |
+
+## Остановка
+
+Остановить контейнеры без удаления данных БД:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices down
+```
+
+Остановить и удалить volume с данными:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile microservices down -v
+```
+
+Для обычной работы используйте остановку без `-v`.
+
+## Миграции
+
+Миграции применяются gateway при старте из файла:
+
+```text
+migrations/001_init.sql
+```
