@@ -19,7 +19,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role != "customer" {
+	if h.authRequired && user.Role != "customer" {
 		httpx.RespondError(w, http.StatusForbidden, "подтвердить цену может только заказчик")
 		return
 	}
@@ -49,7 +49,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	if order.CustomerID != user.ID {
+	if h.authRequired && order.CustomerID != user.ID {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя подтверждать чужой заказ")
 		return
 	}
@@ -88,7 +88,7 @@ func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role != "operator" {
+	if h.authRequired && user.Role != "operator" {
 		httpx.RespondError(w, http.StatusForbidden, "предложить цену может только эксплуатант")
 		return
 	}
@@ -100,7 +100,8 @@ func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Price float64 `json:"price"`
+		Price      float64 `json:"price"`
+		OperatorID string  `json:"operator_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpx.RespondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
@@ -115,14 +116,21 @@ func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	if !h.store.SetOperatorOffer(orderID, user.ID, req.Price) {
+	operatorID := user.ID
+	if operatorID == "" {
+		operatorID = strings.TrimSpace(req.OperatorID)
+	}
+	if operatorID == "" {
+		operatorID = "integration-operator"
+	}
+	if !h.store.SetOperatorOffer(orderID, operatorID, req.Price) {
 		httpx.RespondError(w, http.StatusBadRequest, "нельзя предложить цену для текущего статуса заказа")
 		return
 	}
 
 	httpx.Respond(w, http.StatusOK, map[string]interface{}{
 		"order_id":      orderID,
-		"operator_id":   user.ID,
+		"operator_id":   operatorID,
 		"offered_price": req.Price,
 		"status":        "matched",
 	})
@@ -134,7 +142,7 @@ func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role != "customer" {
+	if h.authRequired && user.Role != "customer" {
 		httpx.RespondError(w, http.StatusForbidden, "подтвердить выполнение может только заказчик")
 		return
 	}
@@ -151,7 +159,7 @@ func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	if order.CustomerID != user.ID {
+	if h.authRequired && order.CustomerID != user.ID {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя подтверждать чужой заказ")
 		return
 	}
@@ -173,7 +181,7 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role != "customer" && user.Role != "operator" {
+	if h.authRequired && user.Role != "customer" && user.Role != "operator" {
 		httpx.RespondError(w, http.StatusForbidden, "сообщить об инциденте может заказчик или эксплуатант")
 		return
 	}
@@ -208,11 +216,11 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	if user.Role == "customer" && order.CustomerID != user.ID {
+	if h.authRequired && user.Role == "customer" && order.CustomerID != user.ID {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя создать инцидент по чужому заказу")
 		return
 	}
-	if user.Role == "operator" && order.OperatorID != "" && order.OperatorID != user.ID {
+	if h.authRequired && user.Role == "operator" && order.OperatorID != "" && order.OperatorID != user.ID {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя создать инцидент по заказу другого эксплуатанта")
 		return
 	}
@@ -225,7 +233,7 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 		ID:           uuid.NewString(),
 		OrderID:      orderID,
 		OperatorID:   operatorID,
-		ReporterID:   user.ID,
+		ReporterID:   firstNonEmpty(user.ID, req.ReporterID, order.CustomerID),
 		Reason:       strings.TrimSpace(req.Reason),
 		Description:  strings.TrimSpace(req.Description),
 		DamageAmount: req.DamageAmount,
@@ -250,4 +258,13 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 		DamageAmount: incident.DamageAmount,
 		Message:      "incident registered; payout calculation is handled by insurer system",
 	})
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

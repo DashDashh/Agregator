@@ -119,7 +119,7 @@ func (h *Handler) GetCustomer(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusBadRequest, "id заказчика не указан")
 		return
 	}
-	if user.Role != "customer" || user.ID != path {
+	if h.authRequired && (user.Role != "customer" || user.ID != path) {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя смотреть чужой профиль")
 		return
 	}

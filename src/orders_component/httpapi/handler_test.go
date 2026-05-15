@@ -106,6 +106,29 @@ func TestCreateOrderPublishesAndMarksSearching(t *testing.T) {
 	}
 }
 
+func TestCreateOrderAllowsNoAuthWhenAuthDisabled(t *testing.T) {
+	repo := &fakeOrderStore{customer: &store.Customer{ID: "customer-1"}}
+	pub := &fakeOrderPublisher{}
+	h := NewHandlerWithAuthRequired(repo, pub, "test-secret", false)
+	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{
+		"customer_id": "customer-1",
+		"description": "docs",
+		"budget": 1000
+	}`))
+	rec := httptest.NewRecorder()
+
+	h.CreateOrder(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if repo.order == nil || repo.order.CustomerID != "customer-1" {
+		t.Fatalf("order = %+v, want customer_id from payload", repo.order)
+	}
+	if pub.published != 1 {
+		t.Fatalf("published = %d, want 1", pub.published)
+	}
+}
+
 func TestGetOrderForbidsAnotherCustomerOrder(t *testing.T) {
 	token, err := auth.NewToken("customer-2", "customer", "test-secret")
 	if err != nil {

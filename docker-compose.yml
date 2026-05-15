@@ -34,6 +34,7 @@ services:
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       COMPONENT_DISPATCH_MODE: ${COMPONENT_DISPATCH_MODE:-inprocess}
       AUTH_SECRET: ${AUTH_SECRET:-dev_change_me_please_32_chars_min}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure

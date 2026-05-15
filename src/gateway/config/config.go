@@ -17,6 +17,7 @@ type Config struct {
 	OperatorResponseTopic string // топик откуда агрегатор читает ответы эксплуатантов
 	CommissionRate        float64
 	AuthSecret            string
+	AuthRequired          bool
 	DatabaseURL           string
 	MigrationsPath        string // путь к SQL-файлу миграции
 	OperatorTransport     string // kafka | both (MQTT только для operator.* топиков)
@@ -69,6 +70,7 @@ func Load() *Config {
 		OperatorResponseTopic: getEnv("KAFKA_OPERATOR_RESPONSE_TOPIC", defaultOperatorResponseTopic),
 		CommissionRate:        commissionRate,
 		AuthSecret:            getEnv("AUTH_SECRET", "dev-only-change-me"),
+		AuthRequired:          getEnvBool("AUTH_REQUIRED", false),
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
@@ -118,6 +120,18 @@ func getEnvFloat(key string, fallback float64) float64 {
 	if v := os.Getenv(key); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if v := os.Getenv(key); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "y", "on":
+			return true
+		case "0", "false", "no", "n", "off":
+			return false
 		}
 	}
 	return fallback

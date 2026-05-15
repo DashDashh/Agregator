@@ -119,7 +119,7 @@ func (h *Handler) GetOperator(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusBadRequest, "id эксплуатанта не указан")
 		return
 	}
-	if user.Role != "operator" || user.ID != id {
+	if h.authRequired && (user.Role != "operator" || user.ID != id) {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя смотреть чужой профиль")
 		return
 	}

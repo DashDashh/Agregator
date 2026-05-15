@@ -18,7 +18,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role != "customer" {
+	if h.authRequired && user.Role != "customer" {
 		httpx.RespondError(w, http.StatusForbidden, "создавать заказ может только заказчик")
 		return
 	}
@@ -46,7 +46,13 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusBadRequest, "description обязателен")
 		return
 	}
-	req.CustomerID = user.ID
+	if user.ID != "" {
+		req.CustomerID = user.ID
+	}
+	if req.CustomerID == "" {
+		httpx.RespondError(w, http.StatusBadRequest, "customer_id обязателен")
+		return
+	}
 	if _, ok := h.store.GetCustomer(req.CustomerID); !ok {
 		httpx.RespondError(w, http.StatusNotFound, "заказчик не найден")
 		return
@@ -98,7 +104,7 @@ func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if user.Role == "customer" {
+	if h.authRequired && user.Role == "customer" {
 		customerID := strings.TrimSpace(r.URL.Query().Get("customer_id"))
 		if customerID != "" && customerID != user.ID {
 			httpx.RespondError(w, http.StatusForbidden, "нельзя смотреть заказы другого заказчика")
@@ -138,7 +144,7 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
 		return
 	}
-	if user.Role == "customer" && order.CustomerID != user.ID {
+	if h.authRequired && user.Role == "customer" && order.CustomerID != user.ID {
 		httpx.RespondError(w, http.StatusForbidden, "нельзя смотреть чужой заказ")
 		return
 	}

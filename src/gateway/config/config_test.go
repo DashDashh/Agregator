@@ -80,3 +80,16 @@ func TestLoadUsesFallbackForInvalidFloatEnv(t *testing.T) {
 		t.Fatalf("MQTTQoS = %v, want fallback 1", cfg.MQTTQoS)
 	}
 }
+
+func TestLoadAuthRequiredDefaultAndOverride(t *testing.T) {
+	cfg := Load()
+	if cfg.AuthRequired {
+		t.Fatal("AuthRequired default = true, want false for integration compatibility")
+	}
+
+	t.Setenv("AUTH_REQUIRED", "true")
+	cfg = Load()
+	if !cfg.AuthRequired {
+		t.Fatal("AuthRequired = false, want true from AUTH_REQUIRED=true")
+	}
+}

@@ -29,8 +29,8 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("[main] invalid config: %v", err)
 	}
-	log.Printf("[main] config: broker=%s request_topic=%s response_topic=%s operator_transport=%s",
-		cfg.KafkaBroker, cfg.RequestTopic, cfg.ResponseTopic, cfg.OperatorTransport)
+	log.Printf("[main] config: broker=%s request_topic=%s response_topic=%s operator_transport=%s auth_required=%v",
+		cfg.KafkaBroker, cfg.RequestTopic, cfg.ResponseTopic, cfg.OperatorTransport, cfg.AuthRequired)
 
 	s, err := store.New(cfg.DatabaseURL)
 	if err != nil {
@@ -66,9 +66,9 @@ func main() {
 	}
 
 	router := api.NewRouter(api.Handlers{
-		Registry:  registryapi.NewHandler(s, cfg.AuthSecret),
-		Orders:    ordersapi.NewHandler(s, operatorPublisher, cfg.AuthSecret),
-		Contracts: contractsapi.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret),
+		Registry:  registryapi.NewHandlerWithAuthRequired(s, cfg.AuthSecret, cfg.AuthRequired),
+		Orders:    ordersapi.NewHandlerWithAuthRequired(s, operatorPublisher, cfg.AuthSecret, cfg.AuthRequired),
+		Contracts: contractsapi.NewHandlerWithAuthRequired(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret, cfg.AuthRequired),
 	})
 	httpServer := &http.Server{
 		Addr:    ":8080",

@@ -167,6 +167,28 @@ func TestOfferPriceStoresOperatorOffer(t *testing.T) {
 	}
 }
 
+func TestOfferPriceAllowsNoAuthWhenAuthDisabled(t *testing.T) {
+	repo := &fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusSearching,
+	}}
+	h := NewHandlerWithAuthRequired(repo, &fakeContractPublisher{}, 0.1, "test-secret", false)
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/offer", strings.NewReader(`{
+		"operator_id": "operator-1",
+		"price": 1000
+	}`))
+	rec := httptest.NewRecorder()
+
+	h.OfferPrice(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if repo.order.OperatorID != "operator-1" || repo.order.Status != store.StatusMatched {
+		t.Fatalf("order = %+v, want no-auth offer to be applied", repo.order)
+	}
+}
+
 func TestOfferPriceReturnsNotFoundForUnknownOrder(t *testing.T) {
 	token, err := auth.NewToken("operator-1", "operator", "test-secret")
 	if err != nil {

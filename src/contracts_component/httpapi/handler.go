@@ -20,15 +20,21 @@ type Handler struct {
 	publisher      Publisher
 	commissionRate float64
 	authSecret     string
+	authRequired   bool
 	monitor        *securitymonitor.Monitor
 }
 
 func NewHandler(s contracts_component.Store, p Publisher, commissionRate float64, authSecret string) *Handler {
+	return NewHandlerWithAuthRequired(s, p, commissionRate, authSecret, true)
+}
+
+func NewHandlerWithAuthRequired(s contracts_component.Store, p Publisher, commissionRate float64, authSecret string, authRequired bool) *Handler {
 	return &Handler{
 		store:          s,
 		publisher:      p,
 		commissionRate: commissionRate,
 		authSecret:     authSecret,
+		authRequired:   authRequired,
 		monitor:        securitymonitor.New(nil),
 	}
 }
@@ -36,6 +42,9 @@ func NewHandler(s contracts_component.Store, p Publisher, commissionRate float64
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {
 	user, ok := auth.UserFromRequest(r, h.authSecret)
 	if !ok {
+		if !h.authRequired {
+			return &auth.User{Role: "integration"}, true
+		}
 		httpx.RespondError(w, http.StatusUnauthorized, "нужна авторизация")
 		return nil, false
 	}

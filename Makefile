@@ -32,9 +32,9 @@ ci-unit-test: unit-test
 
 integration-test:
 	@docker network create $${DOCKER_NETWORK:-drones_net} >/dev/null 2>&1 || true
-	@docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests up -d --build aggregator postgres zookeeper kafka kafka-init
-	@docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests run --build --rm tests
-	@docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests down -v --remove-orphans
+	@AUTH_REQUIRED=true docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests up -d --build aggregator postgres zookeeper kafka kafka-init
+	@AUTH_REQUIRED=true docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests run --build --rm tests
+	@AUTH_REQUIRED=true docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka --profile tests down -v --remove-orphans
 
 ci-integration-test: integration-test
 
