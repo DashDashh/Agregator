@@ -9,6 +9,8 @@ import (
 )
 
 type fakeStore struct {
+	order           *domain.Order
+	incident        *domain.Incident
 	offerOrderID    string
 	offerOperatorID string
 	offerPrice      float64
@@ -17,6 +19,13 @@ type fakeStore struct {
 	statusOrderID   string
 	status          domain.OrderStatus
 	apply           bool
+}
+
+func (f *fakeStore) GetOrder(id string) (*domain.Order, bool) {
+	if f.order != nil && f.order.ID == id {
+		return f.order, true
+	}
+	return nil, false
 }
 
 func (f *fakeStore) SetOperatorOffer(orderID, operatorID string, price float64) bool {
@@ -36,6 +45,11 @@ func (f *fakeStore) UpdateOrderStatus(id string, status domain.OrderStatus) bool
 	f.statusOrderID = id
 	f.status = status
 	return f.apply
+}
+
+func (f *fakeStore) RegisterIncident(i *domain.Incident) error {
+	f.incident = i
+	return nil
 }
 
 func TestProcessOperatorMessageAppliesPriceOffer(t *testing.T) {
@@ -85,6 +99,37 @@ func TestProcessOperatorMessageAppliesOrderResult(t *testing.T) {
 	}
 	if store.resultOrderID != "order-1" || !store.resultSuccess {
 		t.Fatalf("stored result = %s/%v", store.resultOrderID, store.resultSuccess)
+	}
+}
+
+func TestProcessOperatorMessageRegistersIncident(t *testing.T) {
+	payload, err := json.Marshal(models.IncidentReportedPayload{
+		OrderID:      "order-1",
+		OperatorID:   "operator-1",
+		Reason:       "drone_lost",
+		DamageAmount: 1500,
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	msg, err := json.Marshal(models.Request{Action: models.MsgIncidentReported, Payload: payload})
+	if err != nil {
+		t.Fatalf("marshal message: %v", err)
+	}
+	store := &fakeStore{apply: true}
+
+	result, err := ProcessOperatorMessage(store, msg)
+	if err != nil {
+		t.Fatalf("ProcessOperatorMessage returned error: %v", err)
+	}
+	if result != ProcessApplied {
+		t.Fatalf("result = %q, want %q", result, ProcessApplied)
+	}
+	if store.incident == nil {
+		t.Fatal("incident was not registered")
+	}
+	if store.incident.OrderID != "order-1" || store.incident.Reason != "drone_lost" || store.incident.DamageAmount != 1500 {
+		t.Fatalf("incident = %+v", store.incident)
 	}
 }
 

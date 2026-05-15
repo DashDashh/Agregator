@@ -34,6 +34,8 @@ const (
 	MsgPriceOffer MessageType = "price_offer"
 	// MsgOrderResult — эксплуатант сообщает о завершении (успех/провал) заказа
 	MsgOrderResult MessageType = "order_result"
+	// MsgIncidentReported — эксплуатант или внешний монитор сообщает об инциденте по заказу
+	MsgIncidentReported MessageType = "incident_reported"
 
 	// Сообщения от агрегатора  эксплуатанту (пишем в operator.requests)
 
@@ -273,6 +275,27 @@ type OrderResultPayload struct {
 	Success    bool    `json:"success"`
 	Reason     string  `json:"reason"` // пустая строка при успехе, описание причины при срыве
 	TotalPrice float64 `json:"total_price,omitempty"`
+}
+
+// IncidentReportedPayload — явная регистрация негативного сценария без расчёта страховой выплаты.
+type IncidentReportedPayload struct {
+	OrderID      string  `json:"order_id"`
+	OperatorID   string  `json:"operator_id,omitempty"`
+	ReporterID   string  `json:"reporter_id,omitempty"`
+	Reason       string  `json:"reason"`
+	Description  string  `json:"description,omitempty"`
+	DamageAmount float64 `json:"damage_amount,omitempty"`
+}
+
+type IncidentResponse struct {
+	IncidentID   string  `json:"incident_id"`
+	OrderID      string  `json:"order_id"`
+	OperatorID   string  `json:"operator_id,omitempty"`
+	Status       string  `json:"status"`
+	OrderStatus  string  `json:"order_status"`
+	Reason       string  `json:"reason"`
+	DamageAmount float64 `json:"damage_amount,omitempty"`
+	Message      string  `json:"message"`
 }
 
 // Сообщения от агрегатора  эксплуатанту (operator.requests)

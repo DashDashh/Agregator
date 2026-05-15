@@ -22,6 +22,7 @@ const (
 
 type OrderStatus = domain.OrderStatus
 type Order = domain.Order
+type Incident = domain.Incident
 type Operator = domain.Operator
 type Customer = domain.Customer
 

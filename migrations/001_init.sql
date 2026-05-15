@@ -50,6 +50,19 @@ CREATE TABLE IF NOT EXISTS orders (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Инциденты по заказам: негативный сценарий фиксируется на стороне агрегатора.
+CREATE TABLE IF NOT EXISTS incidents (
+    id            TEXT PRIMARY KEY,
+    order_id      TEXT NOT NULL REFERENCES orders(id),
+    operator_id   TEXT NOT NULL DEFAULT '',
+    reporter_id   TEXT NOT NULL DEFAULT '',
+    reason        TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
+    damage_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'registered',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- На случай уже существующей таблицы без новых колонок — добиваем их идемпотентно
 ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS operator_id TEXT NOT NULL DEFAULT '',
@@ -73,3 +86,5 @@ ALTER TABLE operators
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 -- Индекс для фильтрации по статусу
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+-- Индекс для поиска инцидентов по заказу
+CREATE INDEX IF NOT EXISTS idx_incidents_order_id ON incidents(order_id);

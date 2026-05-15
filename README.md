@@ -413,6 +413,25 @@ OPERATOR_TRANSPORT=both make docker-up-micro
 }
 ```
 
+Инцидент по заказу:
+
+```json
+{
+  "action": "incident_reported",
+  "sender": "operator_service",
+  "correlation_id": "order-1",
+  "payload": {
+    "order_id": "order-1",
+    "operator_id": "operator-1",
+    "reason": "drone_lost",
+    "description": "Оператор сообщил о срыве доставки",
+    "damage_amount": 5000
+  }
+}
+```
+
+Агрегатор регистрирует инцидент, переводит заказ в `dispute` и пишет событие в монитор безопасности. Расчет страховой выплаты остается зоной ответственности системы страховщика.
+
 Отправить тестовое сообщение в Kafka можно так:
 
 ```bash
@@ -438,6 +457,7 @@ EOF
 | `POST` | `/orders/{id}/offer` | предложение цены эксплуатантом |
 | `POST` | `/orders/{id}/confirm-price` | подтверждение цены заказчиком |
 | `POST` | `/orders/{id}/confirm-completion` | подтверждение выполнения |
+| `POST` | `/orders/{id}/incident` | регистрация инцидента по заказу |
 
 Защищенные ручки требуют заголовок:
 
@@ -455,7 +475,46 @@ Authorization: Bearer <token>
 | `confirmed` | заказчик подтвердил цену |
 | `completed_pending_confirmation` | эксплуатант сообщил об успешном выполнении |
 | `completed` | заказчик подтвердил выполнение |
-| `dispute` | эксплуатант сообщил о срыве |
+| `dispute` | эксплуатант сообщил о срыве или зарегистрирован инцидент |
+
+## Инциденты и монитор безопасности
+
+HTTP-регистрация инцидента:
+
+```http
+POST /orders/{id}/incident
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "reason": "drone_lost",
+  "description": "Оператор сообщил о срыве доставки",
+  "damage_amount": 5000
+}
+```
+
+Ответ:
+
+```json
+{
+  "incident_id": "uuid",
+  "order_id": "order-1",
+  "operator_id": "operator-1",
+  "status": "registered",
+  "order_status": "dispute",
+  "reason": "drone_lost",
+  "damage_amount": 5000,
+  "message": "incident registered; payout calculation is handled by insurer system"
+}
+```
+
+Монитор безопасности сейчас фиксирует:
+
+- зарегистрированный инцидент;
+- неуспешный `order_result`;
+- оферту оператора, которая не покрывает все `security_goals` заказа.
 
 ## Остановка
 

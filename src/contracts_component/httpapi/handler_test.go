@@ -8,12 +8,14 @@ import (
 	"testing"
 
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
+	"github.com/kirilltahmazidi/aggregator/src/shared/domain"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
 type fakeContractStore struct {
-	order *store.Order
+	order    *store.Order
+	incident *domain.Incident
 }
 
 func (f *fakeContractStore) GetOrder(id string) (*store.Order, bool) {
@@ -49,6 +51,14 @@ func (f *fakeContractStore) SetOperatorOffer(orderID, operatorID string, price f
 		return true
 	}
 	return false
+}
+
+func (f *fakeContractStore) RegisterIncident(i *domain.Incident) error {
+	f.incident = i
+	if f.order != nil && f.order.ID == i.OrderID {
+		f.order.Status = store.StatusDispute
+	}
+	return nil
 }
 
 type fakeContractPublisher struct {
@@ -214,5 +224,60 @@ func TestConfirmCompletionMarksOrderCompleted(t *testing.T) {
 	}
 	if repo.order.Status != store.StatusCompleted {
 		t.Fatalf("status = %q, want %q", repo.order.Status, store.StatusCompleted)
+	}
+}
+
+func TestReportIncidentRegistersIncident(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		OperatorID: "operator-1",
+		Status:     store.StatusConfirmed,
+	}}
+	h := NewHandler(repo, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/incident", strings.NewReader(`{
+		"reason": "drone_lost",
+		"description": "operator reported failed delivery",
+		"damage_amount": 5000
+	}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ReportIncident(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if repo.incident == nil {
+		t.Fatal("incident was not registered")
+	}
+	if repo.incident.OrderID != "order-1" || repo.incident.Reason != "drone_lost" || repo.incident.DamageAmount != 5000 {
+		t.Fatalf("incident = %+v", repo.incident)
+	}
+	if repo.order.Status != store.StatusDispute {
+		t.Fatalf("order status = %q, want %q", repo.order.Status, store.StatusDispute)
+	}
+}
+
+func TestReportIncidentRejectsWrongCustomer(t *testing.T) {
+	token, err := auth.NewToken("customer-2", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeContractStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		Status:     store.StatusConfirmed,
+	}}, &fakeContractPublisher{}, 0.1, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/incident", strings.NewReader(`{"reason":"damage"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ReportIncident(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
 	}
 }

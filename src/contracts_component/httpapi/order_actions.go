@@ -5,7 +5,10 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/kirilltahmazidi/aggregator/src/shared/domain"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 )
@@ -161,5 +164,90 @@ func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 	httpx.Respond(w, http.StatusOK, map[string]interface{}{
 		"order_id": orderID,
 		"status":   "completed",
+	})
+}
+
+// ReportIncident обрабатывает POST /orders/{id}/incident.
+func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	if user.Role != "customer" && user.Role != "operator" {
+		httpx.RespondError(w, http.StatusForbidden, "сообщить об инциденте может заказчик или эксплуатант")
+		return
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/orders/")
+	orderID := strings.TrimSuffix(path, "/incident")
+	if orderID == "" {
+		httpx.RespondError(w, http.StatusBadRequest, "id заказа не указан")
+		return
+	}
+
+	var req models.IncidentReportedPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.RespondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
+		return
+	}
+	if req.OrderID != "" && req.OrderID != orderID {
+		httpx.RespondError(w, http.StatusBadRequest, "order_id в теле не совпадает с id в пути")
+		return
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		httpx.RespondError(w, http.StatusBadRequest, "reason обязателен")
+		return
+	}
+	if req.DamageAmount < 0 {
+		httpx.RespondError(w, http.StatusBadRequest, "damage_amount не может быть отрицательным")
+		return
+	}
+
+	order, found := h.store.GetOrder(orderID)
+	if !found {
+		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
+		return
+	}
+	if user.Role == "customer" && order.CustomerID != user.ID {
+		httpx.RespondError(w, http.StatusForbidden, "нельзя создать инцидент по чужому заказу")
+		return
+	}
+	if user.Role == "operator" && order.OperatorID != "" && order.OperatorID != user.ID {
+		httpx.RespondError(w, http.StatusForbidden, "нельзя создать инцидент по заказу другого эксплуатанта")
+		return
+	}
+
+	operatorID := req.OperatorID
+	if operatorID == "" {
+		operatorID = order.OperatorID
+	}
+	incident := &domain.Incident{
+		ID:           uuid.NewString(),
+		OrderID:      orderID,
+		OperatorID:   operatorID,
+		ReporterID:   user.ID,
+		Reason:       strings.TrimSpace(req.Reason),
+		Description:  strings.TrimSpace(req.Description),
+		DamageAmount: req.DamageAmount,
+		Status:       "registered",
+		CreatedAt:    time.Now().UTC(),
+	}
+	if err := h.store.RegisterIncident(incident); err != nil {
+		log.Printf("[api] failed to register incident order_id=%s: %v", orderID, err)
+		httpx.RespondError(w, http.StatusInternalServerError, "не удалось зарегистрировать инцидент")
+		return
+	}
+	h.monitor.IncidentReported(*incident)
+	log.Printf("[api] incident registered order_id=%s incident_id=%s", orderID, incident.ID)
+
+	httpx.Respond(w, http.StatusCreated, models.IncidentResponse{
+		IncidentID:   incident.ID,
+		OrderID:      incident.OrderID,
+		OperatorID:   incident.OperatorID,
+		Status:       incident.Status,
+		OrderStatus:  string(domain.StatusDispute),
+		Reason:       incident.Reason,
+		DamageAmount: incident.DamageAmount,
+		Message:      "incident registered; payout calculation is handled by insurer system",
 	})
 }

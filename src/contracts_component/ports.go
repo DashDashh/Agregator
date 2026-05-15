@@ -7,4 +7,5 @@ type Store interface {
 	ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmount float64) bool
 	ConfirmCompletion(id string) bool
 	SetOperatorOffer(orderID, operatorID string, price float64) bool
+	RegisterIncident(i *domain.Incident) error
 }

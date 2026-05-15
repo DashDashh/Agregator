@@ -38,6 +38,19 @@ type Order struct {
 	CreatedAt        time.Time   `json:"created_at"`
 }
 
+// Incident describes a negative order outcome registered by the aggregator.
+type Incident struct {
+	ID           string    `json:"id"`
+	OrderID      string    `json:"order_id"`
+	OperatorID   string    `json:"operator_id,omitempty"`
+	ReporterID   string    `json:"reporter_id,omitempty"`
+	Reason       string    `json:"reason"`
+	Description  string    `json:"description,omitempty"`
+	DamageAmount float64   `json:"damage_amount,omitempty"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type Operator struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`

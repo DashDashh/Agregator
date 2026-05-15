@@ -11,6 +11,7 @@ import (
 	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
 	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/shared/domain"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
@@ -19,6 +20,7 @@ type routerStore struct {
 	customer *store.Customer
 	operator *store.Operator
 	order    *store.Order
+	incident *domain.Incident
 }
 
 func (s *routerStore) SaveCustomer(c *store.Customer) error {
@@ -135,6 +137,14 @@ func (s *routerStore) SetOperatorOffer(orderID, operatorID string, price float64
 		return true
 	}
 	return false
+}
+
+func (s *routerStore) RegisterIncident(i *domain.Incident) error {
+	s.incident = i
+	if s.order != nil && s.order.ID == i.OrderID {
+		s.order.Status = store.StatusDispute
+	}
+	return nil
 }
 
 type routerPublisher struct{}

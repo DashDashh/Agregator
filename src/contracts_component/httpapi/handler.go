@@ -6,6 +6,7 @@ import (
 
 	"github.com/kirilltahmazidi/aggregator/src/contracts_component"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
+	securitymonitor "github.com/kirilltahmazidi/aggregator/src/security_monitor_component"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 )
@@ -19,10 +20,17 @@ type Handler struct {
 	publisher      Publisher
 	commissionRate float64
 	authSecret     string
+	monitor        *securitymonitor.Monitor
 }
 
 func NewHandler(s contracts_component.Store, p Publisher, commissionRate float64, authSecret string) *Handler {
-	return &Handler{store: s, publisher: p, commissionRate: commissionRate, authSecret: authSecret}
+	return &Handler{
+		store:          s,
+		publisher:      p,
+		commissionRate: commissionRate,
+		authSecret:     authSecret,
+		monitor:        securitymonitor.New(nil),
+	}
 }
 
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {

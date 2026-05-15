@@ -55,6 +55,10 @@ func NewRouter(h Handlers) http.Handler {
 			h.Contracts.ConfirmCompletion(w, r)
 			return
 		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/incident") {
+			h.Contracts.ReportIncident(w, r)
+			return
+		}
 		if r.Method == http.MethodGet {
 			h.Orders.GetOrder(w, r)
 		} else {
