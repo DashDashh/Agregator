@@ -8,13 +8,17 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kirilltahmazidi/aggregator/internal/api"
-	"github.com/kirilltahmazidi/aggregator/internal/config"
-	"github.com/kirilltahmazidi/aggregator/internal/gateway"
-	"github.com/kirilltahmazidi/aggregator/internal/handler"
-	"github.com/kirilltahmazidi/aggregator/internal/kafka"
-	"github.com/kirilltahmazidi/aggregator/internal/mqtt"
-	"github.com/kirilltahmazidi/aggregator/internal/store"
+	contractsapi "github.com/kirilltahmazidi/aggregator/src/contracts_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/api"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/api/publisher"
+	busgateway "github.com/kirilltahmazidi/aggregator/src/gateway/bus/gateway"
+	bushandler "github.com/kirilltahmazidi/aggregator/src/gateway/bus/handler"
+	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component/kafka"
+	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component/mqtt"
+	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
+	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
 func main() {
@@ -44,25 +48,28 @@ func main() {
 	}
 	log.Println("[main] migrations applied")
 
-	h := handler.New()
-	gw := gateway.New(h)
+	h := bushandler.New()
+	gw := busgateway.New(h)
 	svc := kafka.NewService(cfg, gw, s)
 
-	publisher := api.NewMultiPublisher(svc)
+	operatorPublisher := publisher.NewMultiPublisher(svc)
 	var mqttSvc *mqtt.Service
 	if cfg.UseMQTTForOperators() {
 		mqttSvc, err = mqtt.NewService(cfg, s)
 		if err != nil {
 			log.Fatalf("[main] mqtt is required by OPERATOR_TRANSPORT=%s: %v", cfg.OperatorTransport, err)
 		}
-		publisher = api.NewMultiPublisher(svc, mqttSvc)
+		operatorPublisher = publisher.NewMultiPublisher(svc, mqttSvc)
 		log.Println("[main] operator transport mode: kafka + mqtt")
 	} else {
 		log.Println("[main] operator transport mode: kafka only")
 	}
 
-	apiHandler := api.NewHandler(s, publisher, cfg.CommissionRate, cfg.AuthSecret)
-	router := api.NewRouter(apiHandler)
+	router := api.NewRouter(api.Handlers{
+		Registry:  registryapi.NewHandler(s, cfg.AuthSecret),
+		Orders:    ordersapi.NewHandler(s, operatorPublisher, cfg.AuthSecret),
+		Contracts: contractsapi.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret),
+	})
 	httpServer := &http.Server{
 		Addr:    ":8080",
 		Handler: router,

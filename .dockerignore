@@ -1,0 +1,11 @@
+.git
+.agents
+.codex
+.vscode
+.idea
+tmp
+bin
+*.test
+*.out
+.env
+.env.*
