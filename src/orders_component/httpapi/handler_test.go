@@ -82,6 +82,17 @@ func TestCreateOrderRequiresCustomerRole(t *testing.T) {
 	}
 }
 
+func TestCreateOrderRequiresAuth(t *testing.T) {
+	h := NewHandler(&fakeOrderStore{}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"description":"docs"}`))
+	rec := httptest.NewRecorder()
+
+	h.CreateOrder(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestCreateOrderPublishesAndMarksSearching(t *testing.T) {
 	token, err := auth.NewToken("customer-1", "customer", "test-secret")
 	if err != nil {
@@ -106,6 +117,38 @@ func TestCreateOrderPublishesAndMarksSearching(t *testing.T) {
 	}
 }
 
+func TestCreateOrderRejectsMissingDescription(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{customer: &store.Customer{ID: "customer-1"}}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"budget":1000}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.CreateOrder(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCreateOrderReturnsNotFoundForMissingCustomer(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"description":"docs"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.CreateOrder(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
 func TestGetOrderForbidsAnotherCustomerOrder(t *testing.T) {
 	token, err := auth.NewToken("customer-2", "customer", "test-secret")
 	if err != nil {
@@ -122,6 +165,22 @@ func TestGetOrderForbidsAnotherCustomerOrder(t *testing.T) {
 	h.GetOrder(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestGetOrderReturnsNotFound(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/orders/order-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.GetOrder(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
 
@@ -144,5 +203,43 @@ func TestListOrdersForCustomerUsesTokenIdentity(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "order-1") {
 		t.Fatalf("body does not contain order: %s", rec.Body.String())
+	}
+}
+
+func TestListOrdersFiltersByCustomerQueryForOperator(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{
+		customer: &store.Customer{ID: "customer-1"},
+		order:    &store.Order{ID: "order-1", CustomerID: "customer-1"},
+	}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/orders?customer_id=customer-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ListOrders(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "order-1") {
+		t.Fatalf("body does not contain filtered order: %s", rec.Body.String())
+	}
+}
+
+func TestListOrdersReturnsNotFoundForUnknownCustomerQuery(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	h := NewHandler(&fakeOrderStore{}, &fakeOrderPublisher{}, "test-secret")
+	req := httptest.NewRequest(http.MethodGet, "/orders?customer_id=missing", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	h.ListOrders(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }

@@ -29,6 +29,34 @@ func TestIncidentReportedEmitsHighSeverityAlert(t *testing.T) {
 	}
 }
 
+func TestOrderFailedEmitsAlertWithReason(t *testing.T) {
+	sink := &captureSink{}
+	monitor := New(sink)
+
+	alert := monitor.OrderFailed(models.OrderResultPayload{
+		OrderID: "order-1",
+		Reason:  "drone_lost",
+	})
+
+	if alert.Code != "operator_reported_failure" || alert.Severity != "high" || alert.Message != "drone_lost" {
+		t.Fatalf("alert = %+v", alert)
+	}
+	if len(sink.alerts) != 1 {
+		t.Fatalf("sink alerts = %d, want 1", len(sink.alerts))
+	}
+}
+
+func TestOrderFailedUsesDefaultMessage(t *testing.T) {
+	sink := &captureSink{}
+	monitor := New(sink)
+
+	alert := monitor.OrderFailed(models.OrderResultPayload{OrderID: "order-1"})
+
+	if alert.Message == "" {
+		t.Fatal("default failure message is empty")
+	}
+}
+
 func TestPriceOfferReceivedAlertsOnMissingSecurityGoals(t *testing.T) {
 	sink := &captureSink{}
 	monitor := New(sink)

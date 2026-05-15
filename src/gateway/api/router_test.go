@@ -116,6 +116,7 @@ func (s *routerStore) ConfirmPrice(id, operatorID string, acceptedPrice, commiss
 		s.order.OperatorID = operatorID
 		s.order.OfferedPrice = acceptedPrice
 		s.order.CommissionAmount = commissionAmount
+		s.order.Status = store.StatusConfirmed
 		return true
 	}
 	return false
@@ -282,6 +283,113 @@ func TestRouterDispatchesGetOrder(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"order-1"`) {
 		t.Fatalf("body does not contain order: %s", rec.Body.String())
+	}
+}
+
+func TestRouterDispatchesOfferPrice(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{order: &store.Order{ID: "order-1", Status: store.StatusSearching}}
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/offer", strings.NewReader(`{"price":1200}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if repo.order.OperatorID != "operator-1" {
+		t.Fatalf("operator_id = %q, want operator-1", repo.order.OperatorID)
+	}
+}
+
+func TestRouterDispatchesConfirmPrice(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		OperatorID: "operator-1",
+		Status:     store.StatusMatched,
+	}}
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/confirm-price", strings.NewReader(`{
+		"operator_id": "operator-1",
+		"accepted_price": 1200
+	}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if repo.order.Status != store.StatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", repo.order.Status)
+	}
+}
+
+func TestRouterDispatchesIncident(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{order: &store.Order{
+		ID:         "order-1",
+		CustomerID: "customer-1",
+		OperatorID: "operator-1",
+		Status:     store.StatusConfirmed,
+	}}
+	req := httptest.NewRequest(http.MethodPost, "/orders/order-1/incident", strings.NewReader(`{"reason":"drone_lost"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	if repo.incident == nil {
+		t.Fatal("incident was not registered")
+	}
+}
+
+func TestRouterDispatchesGetCustomer(t *testing.T) {
+	token, err := auth.NewToken("customer-1", "customer", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{customer: &store.Customer{ID: "customer-1", Name: "Ivan"}}
+	req := httptest.NewRequest(http.MethodGet, "/customers/customer-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestRouterDispatchesGetOperator(t *testing.T) {
+	token, err := auth.NewToken("operator-1", "operator", "test-secret")
+	if err != nil {
+		t.Fatalf("NewToken returned error: %v", err)
+	}
+	repo := &routerStore{operator: &store.Operator{ID: "operator-1", Name: "Operator"}}
+	req := httptest.NewRequest(http.MethodGet, "/operators/operator-1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+
+	newTestRouterWith(repo, routerPublisher{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 }
 

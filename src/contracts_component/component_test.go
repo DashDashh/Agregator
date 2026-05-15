@@ -99,6 +99,15 @@ func TestHandleRejectsUnknownAction(t *testing.T) {
 	}
 }
 
+func TestHandles(t *testing.T) {
+	if !Handles(models.MsgConcludeContract) || !Handles(models.MsgConfirmExecution) || !Handles(models.MsgCreateDispute) {
+		t.Fatal("Handles rejected contracts actions")
+	}
+	if Handles(models.MsgCreateOrder) {
+		t.Fatal("Handles accepted non-contract action")
+	}
+}
+
 func TestHandleCreateDisputeRejectsInvalidPayload(t *testing.T) {
 	resp, ok := NewHandler().Handle(models.Request{
 		Action:        models.MsgCreateDispute,

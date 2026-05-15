@@ -45,3 +45,29 @@ func TestMultiPublisherFailsWithoutBackends(t *testing.T) {
 		t.Fatal("PublishConfirmPrice succeeded without backends")
 	}
 }
+
+func TestMultiPublisherConfirmPriceSucceedsWhenAnyBackendSucceeds(t *testing.T) {
+	failing := &fakeBackend{confirmErr: errors.New("boom")}
+	working := &fakeBackend{}
+
+	err := NewMultiPublisher(failing, working).PublishConfirmPrice(
+		context.Background(),
+		models.ConfirmPricePayload{OrderID: "order-1"},
+	)
+	if err != nil {
+		t.Fatalf("PublishConfirmPrice returned error: %v", err)
+	}
+	if failing.publishedPrices != 1 || working.publishedPrices != 1 {
+		t.Fatalf("published counts = %d/%d, want 1/1", failing.publishedPrices, working.publishedPrices)
+	}
+}
+
+func TestMultiPublisherOrderFailsWhenAllBackendsFail(t *testing.T) {
+	err := NewMultiPublisher(
+		&fakeBackend{orderErr: errors.New("one")},
+		&fakeBackend{orderErr: errors.New("two")},
+	).PublishOrder(context.Background(), &store.Order{ID: "order-1"})
+	if err == nil {
+		t.Fatal("PublishOrder succeeded when all backends failed")
+	}
+}
