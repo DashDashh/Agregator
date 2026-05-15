@@ -6,6 +6,46 @@ services:
       BROKER_PASSWORD: ${BROKER_PASSWORD:-}
       KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
 
+  registry:
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      BROKER_USER: ${BROKER_USER:-}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+      KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
+
+  orders:
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      BROKER_USER: ${BROKER_USER:-}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+      KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
+
+  contracts:
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      BROKER_USER: ${BROKER_USER:-}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+      KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
+
+  analytics:
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      BROKER_USER: ${BROKER_USER:-}
+      BROKER_PASSWORD: ${BROKER_PASSWORD:-}
+      KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
@@ -19,6 +59,7 @@ services:
     image: confluentinc/cp-kafka:7.6.0
     depends_on:
       - zookeeper
+    restart: on-failure
     ports:
       - "29092:29092"
     environment:
@@ -44,8 +85,16 @@ services:
       SYSTEM_NAME: agregator
     entrypoint: >
       bash -c "
+        set -e;
         echo 'Waiting for Kafka...';
-        sleep 10;
+        for i in $$(seq 1 60); do
+          if kafka-topics --bootstrap-server kafka:9092 --list >/dev/null 2>&1; then
+            break;
+          fi;
+          echo \"Kafka is not ready yet ($$i/60)\";
+          sleep 2;
+        done;
+        kafka-topics --bootstrap-server kafka:9092 --list >/dev/null;
         NS="$${SYSTEM_NAMESPACE}";
         NS="$${NS#.}";
         NS="$${NS%.}";
@@ -53,6 +102,10 @@ services:
         if [ -n \"$${NS}\" ]; then PREFIX=\"$${NS}.\"; fi;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}systems.$${SYSTEM_NAME};
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.responses;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic components.$${SYSTEM_NAME}.registry;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic components.$${SYSTEM_NAME}.orders;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic components.$${SYSTEM_NAME}.contracts;
+        kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic components.$${SYSTEM_NAME}.analytics;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.requests;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 3 --topic $${PREFIX}components.$${SYSTEM_NAME}.operator.responses;
         kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 --replication-factor 1 --partitions 1 --topic errors.dead_letters;
