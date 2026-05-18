@@ -52,6 +52,10 @@ func (f *fakeStore) RegisterIncident(i *domain.Incident) error {
 	return nil
 }
 
+func (f *fakeStore) SaveSecurityAlert(*domain.SecurityAlert) error {
+	return nil
+}
+
 func TestProcessOperatorMessageAppliesPriceOffer(t *testing.T) {
 	payload, err := json.Marshal(models.PriceOfferPayload{
 		OrderID:    "order-1",
@@ -79,6 +83,29 @@ func TestProcessOperatorMessageAppliesPriceOffer(t *testing.T) {
 	}
 }
 
+func TestProcessOperatorMessageIgnoresPriceOfferWhenStoreRejects(t *testing.T) {
+	payload, err := json.Marshal(models.PriceOfferPayload{
+		OrderID:    "order-1",
+		OperatorID: "operator-1",
+		Price:      1200,
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	msg, err := json.Marshal(models.Request{Action: models.MsgPriceOffer, Payload: payload})
+	if err != nil {
+		t.Fatalf("marshal message: %v", err)
+	}
+
+	result, err := ProcessOperatorMessage(&fakeStore{apply: false}, msg)
+	if err != nil {
+		t.Fatalf("ProcessOperatorMessage returned error: %v", err)
+	}
+	if result != ProcessIgnored {
+		t.Fatalf("result = %q, want %q", result, ProcessIgnored)
+	}
+}
+
 func TestProcessOperatorMessageAppliesOrderResult(t *testing.T) {
 	payload, err := json.Marshal(models.OrderResultPayload{OrderID: "order-1", Success: true})
 	if err != nil {
@@ -98,6 +125,33 @@ func TestProcessOperatorMessageAppliesOrderResult(t *testing.T) {
 		t.Fatalf("result = %q, want %q", result, ProcessApplied)
 	}
 	if store.resultOrderID != "order-1" || !store.resultSuccess {
+		t.Fatalf("stored result = %s/%v", store.resultOrderID, store.resultSuccess)
+	}
+}
+
+func TestProcessOperatorMessageProcessesFailedOrderResult(t *testing.T) {
+	payload, err := json.Marshal(models.OrderResultPayload{
+		OrderID: "order-1",
+		Success: false,
+		Reason:  "drone_lost",
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	msg, err := json.Marshal(models.Request{Action: models.MsgOrderResult, Payload: payload})
+	if err != nil {
+		t.Fatalf("marshal message: %v", err)
+	}
+	store := &fakeStore{apply: true}
+
+	result, err := ProcessOperatorMessage(store, msg)
+	if err != nil {
+		t.Fatalf("ProcessOperatorMessage returned error: %v", err)
+	}
+	if result != ProcessApplied {
+		t.Fatalf("result = %q, want %q", result, ProcessApplied)
+	}
+	if store.resultOrderID != "order-1" || store.resultSuccess {
 		t.Fatalf("stored result = %s/%v", store.resultOrderID, store.resultSuccess)
 	}
 }
@@ -130,6 +184,37 @@ func TestProcessOperatorMessageRegistersIncident(t *testing.T) {
 	}
 	if store.incident.OrderID != "order-1" || store.incident.Reason != "drone_lost" || store.incident.DamageAmount != 1500 {
 		t.Fatalf("incident = %+v", store.incident)
+	}
+}
+
+func TestProcessOperatorMessageRejectsInvalidPayload(t *testing.T) {
+	msg := []byte(`{"action":"price_offer","payload":"oops"}`)
+
+	result, err := ProcessOperatorMessage(&fakeStore{}, msg)
+	if err == nil {
+		t.Fatal("expected invalid payload error")
+	}
+	if result != ProcessInvalidPayload {
+		t.Fatalf("result = %q, want %q", result, ProcessInvalidPayload)
+	}
+}
+
+func TestProcessOperatorMessageRejectsInvalidIncidentPayload(t *testing.T) {
+	payload, err := json.Marshal(models.IncidentReportedPayload{OrderID: "order-1"})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	msg, err := json.Marshal(models.Request{Action: models.MsgIncidentReported, Payload: payload})
+	if err != nil {
+		t.Fatalf("marshal message: %v", err)
+	}
+
+	result, err := ProcessOperatorMessage(&fakeStore{}, msg)
+	if err == nil {
+		t.Fatal("expected invalid incident payload error")
+	}
+	if result != ProcessInvalidPayload {
+		t.Fatalf("result = %q, want %q", result, ProcessInvalidPayload)
 	}
 }
 

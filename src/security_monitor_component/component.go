@@ -2,16 +2,23 @@ package security_monitor_component
 
 import (
 	"log"
+	"strings"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/src/shared/domain"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 )
 
 type Alert struct {
-	Code     string `json:"code"`
-	Severity string `json:"severity"`
-	OrderID  string `json:"order_id,omitempty"`
-	Message  string `json:"message"`
+	ID        string    `json:"id"`
+	Code      string    `json:"code"`
+	Severity  string    `json:"severity"`
+	Source    string    `json:"source"`
+	OrderID   string    `json:"order_id,omitempty"`
+	Message   string    `json:"message"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Sink interface {
@@ -21,8 +28,29 @@ type Sink interface {
 type LogSink struct{}
 
 func (LogSink) Emit(alert Alert) {
-	log.Printf("[security-monitor] severity=%s code=%s order_id=%s message=%s",
-		alert.Severity, alert.Code, alert.OrderID, alert.Message)
+	log.Printf("[security-monitor] id=%s severity=%s code=%s source=%s order_id=%s message=%s",
+		alert.ID, alert.Severity, alert.Code, alert.Source, alert.OrderID, alert.Message)
+}
+
+type AlertStore interface {
+	SaveSecurityAlert(alert *domain.SecurityAlert) error
+}
+
+type StoreSink struct {
+	Store AlertStore
+	Next  Sink
+}
+
+func (s StoreSink) Emit(alert Alert) {
+	if s.Next != nil {
+		s.Next.Emit(alert)
+	}
+	if s.Store == nil {
+		return
+	}
+	if err := s.Store.SaveSecurityAlert(alert.toDomain()); err != nil {
+		log.Printf("[security-monitor] failed to persist alert id=%s code=%s: %v", alert.ID, alert.Code, err)
+	}
 }
 
 type Monitor struct {
@@ -37,26 +65,28 @@ func New(sink Sink) *Monitor {
 }
 
 func (m *Monitor) IncidentReported(i domain.Incident) Alert {
-	alert := Alert{
-		Code:     "incident_reported",
-		Severity: "high",
-		OrderID:  i.OrderID,
-		Message:  "negative order scenario registered",
-	}
+	alert := newAlert("incident_reported", "high", "incident", i.OrderID, "negative order scenario registered")
 	m.sink.Emit(alert)
 	return alert
 }
 
 func (m *Monitor) OrderFailed(payload models.OrderResultPayload) Alert {
-	alert := Alert{
-		Code:     "operator_reported_failure",
-		Severity: "high",
-		OrderID:  payload.OrderID,
-		Message:  payload.Reason,
-	}
+	alert := newAlert("operator_reported_failure", "high", "operator_response", payload.OrderID, payload.Reason)
 	if alert.Message == "" {
 		alert.Message = "operator reported failed order result"
 	}
+	m.sink.Emit(alert)
+	return alert
+}
+
+func (m *Monitor) InvalidSystemMessage(source, message string) Alert {
+	alert := newAlert("invalid_system_message", "medium", source, "", message)
+	m.sink.Emit(alert)
+	return alert
+}
+
+func (m *Monitor) DeadLetterPublished(source, message string) Alert {
+	alert := newAlert("dead_letter_published", "medium", source, "", message)
 	m.sink.Emit(alert)
 	return alert
 }
@@ -81,12 +111,33 @@ func (m *Monitor) PriceOfferReceived(order *domain.Order, payload models.PriceOf
 		return nil
 	}
 
-	alert := Alert{
-		Code:     "security_goals_not_covered",
-		Severity: "medium",
-		OrderID:  order.ID,
-		Message:  "operator offer does not cover all requested security goals",
-	}
+	alert := newAlert("security_goals_not_covered", "medium", "operator_response", order.ID, "operator offer does not cover all requested security goals")
 	m.sink.Emit(alert)
 	return []Alert{alert}
+}
+
+func newAlert(code, severity, source, orderID, message string) Alert {
+	return Alert{
+		ID:        uuid.NewString(),
+		Code:      strings.TrimSpace(code),
+		Severity:  strings.TrimSpace(severity),
+		Source:    strings.TrimSpace(source),
+		OrderID:   strings.TrimSpace(orderID),
+		Message:   strings.TrimSpace(message),
+		Status:    "open",
+		CreatedAt: time.Now().UTC(),
+	}
+}
+
+func (a Alert) toDomain() *domain.SecurityAlert {
+	return &domain.SecurityAlert{
+		ID:        a.ID,
+		Code:      a.Code,
+		Severity:  a.Severity,
+		Source:    a.Source,
+		OrderID:   a.OrderID,
+		Message:   a.Message,
+		Status:    a.Status,
+		CreatedAt: a.CreatedAt,
+	}
 }

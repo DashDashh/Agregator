@@ -7,6 +7,7 @@ import (
 	contractsapi "github.com/kirilltahmazidi/aggregator/src/contracts_component/httpapi"
 	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
 	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
+	securityapi "github.com/kirilltahmazidi/aggregator/src/security_monitor_component/httpapi"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 )
 
@@ -14,6 +15,7 @@ type Handlers struct {
 	Registry  *registryapi.Handler
 	Orders    *ordersapi.Handler
 	Contracts *contractsapi.Handler
+	Security  *securityapi.Handler
 }
 
 func NewRouter(h Handlers) http.Handler {
@@ -97,6 +99,30 @@ func NewRouter(h Handlers) http.Handler {
 	mux.HandleFunc("/customers/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			h.Registry.GetCustomer(w, r)
+			return
+		}
+		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+	})
+
+	mux.HandleFunc("/security/alerts", func(w http.ResponseWriter, r *http.Request) {
+		if h.Security == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodGet {
+			h.Security.ListAlerts(w, r)
+			return
+		}
+		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+	})
+
+	mux.HandleFunc("/security/alerts/", func(w http.ResponseWriter, r *http.Request) {
+		if h.Security == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/resolve") {
+			h.Security.ResolveAlert(w, r)
 			return
 		}
 		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)

@@ -8,6 +8,7 @@ import (
 	busgateway "github.com/kirilltahmazidi/aggregator/src/gateway/bus/gateway"
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
 	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component"
+	securitymonitor "github.com/kirilltahmazidi/aggregator/src/security_monitor_component"
 	"github.com/kirilltahmazidi/aggregator/src/shared/kafkautil"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
@@ -24,6 +25,7 @@ type Service struct {
 	dlt             *kafkago.Writer // dead-letter topic для нечитаемых сообщений
 	gateway         *busgateway.Gateway
 	store           operator_exchange_component.Store // для обновления статусов заказов
+	monitor         *securitymonitor.Monitor
 	dispatchMode    string
 }
 
@@ -95,8 +97,16 @@ func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_c
 		dlt:             dlt,
 		gateway:         g,
 		store:           s,
+		monitor:         securitymonitor.New(securitySink(s)),
 		dispatchMode:    cfg.ComponentDispatchMode,
 	}
+}
+
+func securitySink(s operator_exchange_component.Store) securitymonitor.Sink {
+	if alertStore, ok := s.(securitymonitor.AlertStore); ok {
+		return securitymonitor.StoreSink{Store: alertStore, Next: securitymonitor.LogSink{}}
+	}
+	return securitymonitor.LogSink{}
 }
 
 // PublishOrder отправляет заказ в топик operator.requests — эксплуатанты его читают.
@@ -209,7 +219,7 @@ func (s *Service) RunOperatorConsumer(ctx context.Context) error {
 }
 
 func (s *Service) processOperatorMessage(_ context.Context, msg kafkago.Message) {
-	result, err := operator_exchange_component.ProcessOperatorMessage(s.store, msg.Value)
+	result, err := operator_exchange_component.ProcessOperatorMessageWithMonitor(s.store, s.monitor, msg.Value)
 	if err != nil {
 		log.Printf("[kafka] operator message result=%s error=%v", result, err)
 		return
@@ -253,6 +263,7 @@ func (s *Service) processMessage(ctx context.Context, msg kafkago.Message) {
 	var req models.Request
 	if err := json.Unmarshal(msg.Value, &req); err != nil {
 		log.Printf("[kafka] cannot unmarshal message: %v — sending to DLT", err)
+		s.monitor.InvalidSystemMessage("systems_topic", err.Error())
 		s.sendToDLT(ctx, msg)
 		return
 	}
@@ -341,5 +352,7 @@ func (s *Service) sendToDLT(ctx context.Context, original kafkago.Message) {
 		Value: original.Value,
 	}); err != nil {
 		log.Printf("[kafka] failed to write to DLT: %v", err)
+		return
 	}
+	s.monitor.DeadLetterPublished("systems_topic", "invalid message was published to dead-letter topic")
 }

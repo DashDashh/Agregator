@@ -10,19 +10,27 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component"
 	"github.com/kirilltahmazidi/aggregator/src/shared/componentbus"
+	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
 func main() {
-	run("registry", registry_component.Topic, registry_component.NewHandler())
-}
-
-func run(name, topic string, handler componentbus.Handler) {
+	name := "registry"
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("[%s] invalid config: %v", name, err)
 	}
+	st, err := store.New(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("[%s] cannot connect to database: %v", name, err)
+	}
+	defer st.Close()
+	runMigrations(name, cfg, st)
 
+	run(name, registry_component.Topic, registry_component.NewStoreHandler(st), cfg)
+}
+
+func run(name, topic string, handler componentbus.Handler, cfg *config.Config) {
 	groupID := cfg.ConsumerGroup + "-" + name
 	service := componentbus.NewKafkaService(name, cfg.KafkaBroker, topic, cfg.ResponseTopic, groupID, handler)
 
@@ -31,5 +39,15 @@ func run(name, topic string, handler componentbus.Handler) {
 
 	if err := service.Run(ctx); err != nil && err != context.Canceled {
 		log.Fatalf("[%s] service stopped: %v", name, err)
+	}
+}
+
+func runMigrations(name string, cfg *config.Config, st *store.Store) {
+	migration, err := os.ReadFile(cfg.MigrationsPath)
+	if err != nil {
+		log.Fatalf("[%s] cannot read migration file: %v", name, err)
+	}
+	if err := st.RunMigrations(string(migration)); err != nil {
+		log.Fatalf("[%s] migration failed: %v", name, err)
 	}
 }

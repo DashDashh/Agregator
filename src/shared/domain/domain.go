@@ -51,6 +51,17 @@ type Incident struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type SecurityAlert struct {
+	ID        string    `json:"id"`
+	Code      string    `json:"code"`
+	Severity  string    `json:"severity"`
+	Source    string    `json:"source"`
+	OrderID   string    `json:"order_id,omitempty"`
+	Message   string    `json:"message"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Operator struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`

@@ -285,6 +285,7 @@ OPERATOR_TRANSPORT=both make docker-up-micro
 | `errors.dead_letters` | мониторинг ошибок |
 
 В микросервисном режиме gateway получает сообщение из `systems.agregator`, определяет компонент по `action` и отправляет запрос в один из `components.agregator.*`.
+Сервисы `registry`, `orders` и `contracts` подключаются к PostgreSQL и применяют ту же идемпотентную миграцию, что и gateway, поэтому Kafka-команды этих компонентов сохраняют данные и меняют состояния заказов в общей БД. Для HTTP-ручек gateway по-прежнему остается входной точкой и вызывает HTTP handlers локально.
 
 ## Форматы сообщений
 
@@ -458,6 +459,8 @@ EOF
 | `POST` | `/orders/{id}/confirm-price` | подтверждение цены заказчиком |
 | `POST` | `/orders/{id}/confirm-completion` | подтверждение выполнения |
 | `POST` | `/orders/{id}/incident` | регистрация инцидента по заказу |
+| `GET` | `/security/alerts` | список алертов монитора безопасности |
+| `POST` | `/security/alerts/{id}/resolve` | закрыть алерт |
 
 Защищенные ручки требуют заголовок:
 
@@ -515,6 +518,21 @@ Content-Type: application/json
 - зарегистрированный инцидент;
 - неуспешный `order_result`;
 - оферту оператора, которая не покрывает все `security_goals` заказа.
+- битое системное сообщение, отправленное в dead-letter topic.
+
+Алерты сохраняются в таблицу `security_alerts` со статусом `open`; дополнительно они пишутся в логи сервиса. Посмотреть открытые алерты можно так:
+
+```bash
+curl http://localhost:8081/security/alerts?status=open \
+  -H "Authorization: Bearer $OPERATOR_TOKEN"
+```
+
+Закрыть алерт:
+
+```bash
+curl -X POST http://localhost:8081/security/alerts/$ALERT_ID/resolve \
+  -H "Authorization: Bearer $OPERATOR_TOKEN"
+```
 
 ## Остановка
 

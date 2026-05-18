@@ -113,3 +113,12 @@ func TestHandleRejectsUnknownAction(t *testing.T) {
 		t.Fatal("Handle accepted an unknown action")
 	}
 }
+
+func TestHandles(t *testing.T) {
+	if !Handles(models.MsgCreateOrder) || !Handles(models.MsgSelectExecutor) || !Handles(models.MsgAutoSearchExecutor) {
+		t.Fatal("Handles rejected orders actions")
+	}
+	if Handles(models.MsgRegisterCustomer) {
+		t.Fatal("Handles accepted non-orders action")
+	}
+}

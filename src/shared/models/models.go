@@ -114,9 +114,10 @@ type Response struct {
 // Payload-модели ОФ1
 
 type RegisterOperatorRequest struct {
-	Name    string `json:"name"`
-	License string `json:"license"`
-	Email   string `json:"email"`
+	Name     string `json:"name"`
+	License  string `json:"license"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"`
 }
 
 type RegisterOperatorResponse struct {
@@ -127,9 +128,10 @@ type RegisterOperatorResponse struct {
 // ОФ2
 
 type RegisterCustomerRequest struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Phone string `json:"phone"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Password string `json:"password,omitempty"`
 }
 
 type RegisterCustomerResponse struct {

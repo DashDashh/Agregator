@@ -81,3 +81,25 @@ func TestHandleRequestFallsBackToKafkaKey(t *testing.T) {
 		t.Fatalf("response key = %q, want %q", key, "kafka-key")
 	}
 }
+
+func TestNewKafkaServiceConfiguresReaderAndWriter(t *testing.T) {
+	svc := NewKafkaService("orders", "localhost:9092", "requests", "responses", "group-1", stubHandler{ok: true})
+	defer svc.reader.Close()
+	defer svc.writer.Close()
+
+	if svc.name != "orders" {
+		t.Fatalf("name = %q, want orders", svc.name)
+	}
+	if svc.reader.Config().Topic != "requests" {
+		t.Fatalf("reader topic = %q, want requests", svc.reader.Config().Topic)
+	}
+	if svc.reader.Config().GroupID != "group-1" {
+		t.Fatalf("reader group = %q, want group-1", svc.reader.Config().GroupID)
+	}
+	if svc.writer.Topic != "responses" {
+		t.Fatalf("writer topic = %q, want responses", svc.writer.Topic)
+	}
+	if svc.hdl == nil {
+		t.Fatal("handler is nil")
+	}
+}
