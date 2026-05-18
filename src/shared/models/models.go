@@ -179,20 +179,25 @@ type SelectExecutorResponse struct {
 // ОФ5
 
 type AutoSearchExecutorRequest struct {
-	OrderID   string   `json:"order_id"`
-	Criteria  []string `json:"criteria"` // ["cost", "safety", "guarantee"]
-	MaxBudget float64  `json:"max_budget"`
+	OrderID       string   `json:"order_id"`
+	Criteria      []string `json:"criteria"` // ["cost", "safety", "guarantee"]
+	MaxBudget     float64  `json:"max_budget"`
+	SecurityGoals []string `json:"security_goals,omitempty"`
 }
 
 type Candidate struct {
-	OperatorID string  `json:"operator_id"`
-	Name       string  `json:"name"`
-	Score      float64 `json:"score"`
-	Price      float64 `json:"price"`
+	OperatorID    string   `json:"operator_id"`
+	DroneID       string   `json:"drone_id,omitempty"`
+	Name          string   `json:"name"`
+	DroneName     string   `json:"drone_name,omitempty"`
+	SecurityGoals []string `json:"security_goals,omitempty"`
+	Score         float64  `json:"score"`
+	Price         float64  `json:"price"`
 }
 
 type AutoSearchExecutorResponse struct {
 	OrderID    string      `json:"order_id"`
+	Selected   *Candidate  `json:"selected,omitempty"`
 	Candidates []Candidate `json:"candidates"`
 }
 

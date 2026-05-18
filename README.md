@@ -451,10 +451,13 @@ EOF
 | `GET` | `/health` | проверка сервиса |
 | `POST` | `/customers` | регистрация заказчика |
 | `POST` | `/operators` | регистрация эксплуатанта |
+| `GET` | `/operators/{id}/drones` | список дронов эксплуатанта |
+| `POST` | `/operators/{id}/drones` | добавить дрон эксплуатанта |
 | `POST` | `/auth/login` | вход |
 | `POST` | `/orders` | создание заказа |
 | `GET` | `/orders` | список заказов |
 | `GET` | `/orders/{id}` | заказ по id |
+| `POST` | `/orders/{id}/auto-search` | подобрать дрон-исполнитель по целям безопасности |
 | `POST` | `/orders/{id}/offer` | предложение цены эксплуатантом |
 | `POST` | `/orders/{id}/confirm-price` | подтверждение цены заказчиком |
 | `POST` | `/orders/{id}/confirm-completion` | подтверждение выполнения |
@@ -466,6 +469,52 @@ EOF
 
 ```http
 Authorization: Bearer <token>
+```
+
+## Поиск дрона-исполнителя
+
+У эксплуатанта можно зарегистрировать набор дронов с целями безопасности, которые каждый дрон покрывает:
+
+```bash
+curl -X POST http://localhost:8081/operators/$OPERATOR_ID/drones \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $OPERATOR_TOKEN" \
+  -d '{"name":"Drone Alpha","security_goals":["ЦБ1","ЦБ2"],"status":"available"}'
+```
+
+Подбор исполнителя заказа сейчас работает по целям безопасности: агрегатор берет `security_goals` заказа и выбирает доступный дрон, чей набор `security_goals` покрывает все требуемые цели.
+
+```bash
+curl -X POST http://localhost:8081/orders/$ORDER_ID/auto-search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -d '{}'
+```
+
+Ответ содержит выбранного эксплуатанта и дрон:
+
+```json
+{
+  "order_id": "order-1",
+  "selected": {
+    "operator_id": "operator-1",
+    "drone_id": "drone-1",
+    "name": "Оператор 1",
+    "drone_name": "Drone Alpha",
+    "security_goals": ["ЦБ1", "ЦБ2"],
+    "score": 1
+  },
+  "candidates": [
+    {
+      "operator_id": "operator-1",
+      "drone_id": "drone-1",
+      "name": "Оператор 1",
+      "drone_name": "Drone Alpha",
+      "security_goals": ["ЦБ1", "ЦБ2"],
+      "score": 1
+    }
+  ]
+}
 ```
 
 ## Статусы заказа

@@ -45,6 +45,10 @@ func NewRouter(h Handlers) http.Handler {
 	})
 
 	mux.HandleFunc("/orders/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/auto-search") {
+			h.Orders.AutoSearchExecutor(w, r)
+			return
+		}
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/offer") {
 			h.Contracts.OfferPrice(w, r)
 			return
@@ -79,6 +83,17 @@ func NewRouter(h Handlers) http.Handler {
 
 	// Получение эксплуатанта по ID
 	mux.HandleFunc("/operators/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/drones") {
+			switch r.Method {
+			case http.MethodGet:
+				h.Registry.ListDrones(w, r)
+			case http.MethodPost:
+				h.Registry.RegisterDrone(w, r)
+			default:
+				http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+			}
+			return
+		}
 		if r.Method == http.MethodGet {
 			h.Registry.GetOperator(w, r)
 			return

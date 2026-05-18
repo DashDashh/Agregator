@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
+	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
@@ -149,4 +150,80 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.Respond(w, http.StatusOK, order)
+}
+
+// AutoSearchExecutor подбирает дрон-исполнитель по целям безопасности заказа.
+func (h *Handler) AutoSearchExecutor(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.requireAuth(w, r)
+	if !ok {
+		return
+	}
+
+	orderID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/orders/"), "/auto-search")
+	if orderID == "" {
+		httpx.RespondError(w, http.StatusBadRequest, "id заказа не указан")
+		return
+	}
+	order, found := h.store.GetOrder(orderID)
+	if !found {
+		httpx.RespondError(w, http.StatusNotFound, "заказ не найден")
+		return
+	}
+	if h.authRequired && user.Role == "customer" && order.CustomerID != user.ID {
+		httpx.RespondError(w, http.StatusForbidden, "нельзя подбирать исполнителя для чужого заказа")
+		return
+	}
+
+	var req struct {
+		SecurityGoals []string `json:"security_goals"`
+		MaxBudget     float64  `json:"max_budget"`
+	}
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httpx.RespondError(w, http.StatusBadRequest, "неверное тело запроса: "+err.Error())
+			return
+		}
+	}
+	requiredGoals := req.SecurityGoals
+	if len(requiredGoals) == 0 {
+		requiredGoals = order.SecurityGoals
+	}
+
+	drone, operator, ok := h.store.FindExecutorDrone(requiredGoals)
+	if !ok {
+		httpx.RespondError(w, http.StatusNotFound, "нет дрона, покрывающего цели безопасности заказа")
+		return
+	}
+
+	selected := models.Candidate{
+		OperatorID:    operator.ID,
+		DroneID:       drone.ID,
+		Name:          operator.Name,
+		DroneName:     drone.Name,
+		SecurityGoals: drone.SecurityGoals,
+		Score:         coverageScore(requiredGoals, drone.SecurityGoals),
+		Price:         req.MaxBudget,
+	}
+	httpx.Respond(w, http.StatusOK, models.AutoSearchExecutorResponse{
+		OrderID:    orderID,
+		Selected:   &selected,
+		Candidates: []models.Candidate{selected},
+	})
+}
+
+func coverageScore(required, provided []string) float64 {
+	if len(required) == 0 {
+		return 1
+	}
+	providedSet := make(map[string]struct{}, len(provided))
+	for _, goal := range provided {
+		providedSet[goal] = struct{}{}
+	}
+	matched := 0
+	for _, goal := range required {
+		if _, ok := providedSet[goal]; ok {
+			matched++
+		}
+	}
+	return float64(matched) / float64(len(required))
 }

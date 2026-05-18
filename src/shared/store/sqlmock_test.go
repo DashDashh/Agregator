@@ -109,6 +109,45 @@ func TestOperatorStoreMethods(t *testing.T) {
 		t.Fatal("SetOperatorPasswordHash returned false")
 	}
 
+	createdAt := time.Now().UTC()
+	drone := &Drone{
+		ID:            "drone-1",
+		OperatorID:    "operator-1",
+		Name:          "Drone Alpha",
+		SecurityGoals: []string{"CB1", "CB2"},
+		Status:        "available",
+		CreatedAt:     createdAt,
+	}
+	mock.ExpectExec("INSERT INTO drones").
+		WithArgs(drone.ID, drone.OperatorID, drone.Name, pq.Array(drone.SecurityGoals), drone.Status, drone.CreatedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := st.SaveDrone(drone); err != nil {
+		t.Fatalf("SaveDrone returned error: %v", err)
+	}
+
+	mock.ExpectQuery("SELECT id, operator_id, name, security_goals, status, created_at").
+		WithArgs("operator-1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "operator_id", "name", "security_goals", "status", "created_at"}).
+			AddRow(drone.ID, drone.OperatorID, drone.Name, pq.StringArray(drone.SecurityGoals), drone.Status, drone.CreatedAt))
+	drones := st.ListDronesByOperator("operator-1")
+	if len(drones) != 1 || drones[0].ID != "drone-1" {
+		t.Fatalf("ListDronesByOperator = %+v", drones)
+	}
+
+	mock.ExpectQuery("SELECT").
+		WithArgs(pq.Array([]string{"CB1", "CB2"})).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"drone_id", "drone_operator_id", "drone_name", "drone_security_goals", "drone_status", "drone_created_at",
+			"operator_id", "operator_name", "operator_license", "operator_email", "operator_password_hash",
+		}).AddRow(
+			drone.ID, drone.OperatorID, drone.Name, pq.StringArray(drone.SecurityGoals), drone.Status, drone.CreatedAt,
+			operator.ID, operator.Name, operator.License, operator.Email, operator.PasswordHash,
+		))
+	gotDrone, gotOperator, ok := st.FindExecutorDrone([]string{"CB1", "CB2"})
+	if !ok || gotDrone.ID != "drone-1" || gotOperator.ID != "operator-1" {
+		t.Fatalf("FindExecutorDrone = %+v %+v %v", gotDrone, gotOperator, ok)
+	}
+
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}

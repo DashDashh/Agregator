@@ -9,4 +9,5 @@ type Store interface {
 	ListOrders() []*domain.Order
 	ListOrdersByCustomer(customerID string) []*domain.Order
 	UpdateOrderStatus(id string, status domain.OrderStatus) bool
+	FindExecutorDrone(requiredSecurityGoals []string) (*domain.Drone, *domain.Operator, bool)
 }

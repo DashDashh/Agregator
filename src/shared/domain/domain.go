@@ -70,6 +70,15 @@ type Operator struct {
 	PasswordHash string `json:"-"`
 }
 
+type Drone struct {
+	ID            string    `json:"id"`
+	OperatorID    string    `json:"operator_id"`
+	Name          string    `json:"name"`
+	SecurityGoals []string  `json:"security_goals,omitempty"`
+	Status        string    `json:"status"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 type Customer struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`

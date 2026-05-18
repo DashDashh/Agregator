@@ -57,6 +57,10 @@ func (f *fakeOrderStore) UpdateOrderStatus(id string, status store.OrderStatus) 
 	return false
 }
 
+func (f *fakeOrderStore) FindExecutorDrone([]string) (*store.Drone, *store.Operator, bool) {
+	return nil, nil, false
+}
+
 type fakeOrderPublisher struct {
 	published int
 }

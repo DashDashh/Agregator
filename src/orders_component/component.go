@@ -134,9 +134,34 @@ func (h *Handler) autoSearchExecutor(req models.Request) models.Response {
 		return response.Err("orders_component", req, "invalid payload: "+err.Error())
 	}
 	if h.store != nil {
-		if _, ok := h.store.GetOrder(payload.OrderID); !ok {
-			return response.Err("orders_component", req, "order not found")
+		requiredGoals := payload.SecurityGoals
+		if payload.OrderID != "" {
+			order, ok := h.store.GetOrder(payload.OrderID)
+			if !ok {
+				return response.Err("orders_component", req, "order not found")
+			}
+			if len(requiredGoals) == 0 {
+				requiredGoals = order.SecurityGoals
+			}
 		}
+		drone, operator, ok := h.store.FindExecutorDrone(requiredGoals)
+		if !ok {
+			return response.Err("orders_component", req, "no drone covers requested security goals")
+		}
+		selected := models.Candidate{
+			OperatorID:    operator.ID,
+			DroneID:       drone.ID,
+			Name:          operator.Name,
+			DroneName:     drone.Name,
+			SecurityGoals: drone.SecurityGoals,
+			Score:         coverageScore(requiredGoals, drone.SecurityGoals),
+			Price:         payload.MaxBudget,
+		}
+		return response.Ok(req, models.AutoSearchExecutorResponse{
+			OrderID:    payload.OrderID,
+			Selected:   &selected,
+			Candidates: []models.Candidate{selected},
+		})
 	}
 
 	return response.Ok(req, models.AutoSearchExecutorResponse{
@@ -156,4 +181,21 @@ func (h *Handler) autoSearchExecutor(req models.Request) models.Response {
 			},
 		},
 	})
+}
+
+func coverageScore(required, provided []string) float64 {
+	if len(required) == 0 {
+		return 1
+	}
+	providedSet := make(map[string]struct{}, len(provided))
+	for _, goal := range provided {
+		providedSet[goal] = struct{}{}
+	}
+	matched := 0
+	for _, goal := range required {
+		if _, ok := providedSet[goal]; ok {
+			matched++
+		}
+	}
+	return float64(matched) / float64(len(required))
 }

@@ -24,6 +24,7 @@ type OrderStatus = domain.OrderStatus
 type Order = domain.Order
 type Incident = domain.Incident
 type Operator = domain.Operator
+type Drone = domain.Drone
 type Customer = domain.Customer
 
 // Store инкапсулирует доступ к PostgreSQL.

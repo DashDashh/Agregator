@@ -14,6 +14,7 @@ import (
 type fakeRegistryStore struct {
 	customer *store.Customer
 	operator *store.Operator
+	drone    *store.Drone
 }
 
 func (f *fakeRegistryStore) SaveCustomer(c *store.Customer) error {
@@ -68,6 +69,18 @@ func (f *fakeRegistryStore) SetOperatorPasswordHash(id, passwordHash string) boo
 		return true
 	}
 	return false
+}
+
+func (f *fakeRegistryStore) SaveDrone(drone *store.Drone) error {
+	f.drone = drone
+	return nil
+}
+
+func (f *fakeRegistryStore) ListDronesByOperator(operatorID string) []*store.Drone {
+	if f.drone != nil && f.drone.OperatorID == operatorID {
+		return []*store.Drone{f.drone}
+	}
+	return nil
 }
 
 func TestLoginCustomerSuccess(t *testing.T) {

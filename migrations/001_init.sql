@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS operators (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Дроны эксплуатантов. Подбор исполнителя пока опирается на покрытие целей
+-- безопасности заказа набором security_goals конкретного дрона.
+CREATE TABLE IF NOT EXISTS drones (
+    id             TEXT PRIMARY KEY,
+    operator_id    TEXT NOT NULL REFERENCES operators(id),
+    name           TEXT NOT NULL,
+    security_goals TEXT[] NOT NULL DEFAULT '{}',
+    status         TEXT NOT NULL DEFAULT 'available',
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Заказы на доставку
 CREATE TABLE IF NOT EXISTS orders (
     id            TEXT PRIMARY KEY,
@@ -95,12 +106,20 @@ ALTER TABLE customers
 ALTER TABLE operators
     ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
 
+ALTER TABLE drones
+    ADD COLUMN IF NOT EXISTS security_goals TEXT[] NOT NULL DEFAULT '{}',
+    ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'available';
+
 -- Индекс для быстрого поиска заказов по заказчику
 CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 -- Индекс для фильтрации по статусу
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 -- Индекс для поиска инцидентов по заказу
 CREATE INDEX IF NOT EXISTS idx_incidents_order_id ON incidents(order_id);
+-- Индексы для поиска дрона-исполнителя
+CREATE INDEX IF NOT EXISTS idx_drones_operator_id ON drones(operator_id);
+CREATE INDEX IF NOT EXISTS idx_drones_security_goals ON drones USING GIN(security_goals);
+CREATE INDEX IF NOT EXISTS idx_drones_status ON drones(status);
 -- Индексы для панели/проверки security monitor
 CREATE INDEX IF NOT EXISTS idx_security_alerts_status ON security_alerts(status);
 CREATE INDEX IF NOT EXISTS idx_security_alerts_order_id ON security_alerts(order_id);

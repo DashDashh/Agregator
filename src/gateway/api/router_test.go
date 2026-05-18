@@ -21,6 +21,7 @@ type routerStore struct {
 	operator *store.Operator
 	order    *store.Order
 	incident *domain.Incident
+	drone    *domain.Drone
 }
 
 func (s *routerStore) SaveCustomer(c *store.Customer) error {
@@ -77,6 +78,18 @@ func (s *routerStore) SetOperatorPasswordHash(id, passwordHash string) bool {
 	return false
 }
 
+func (s *routerStore) SaveDrone(drone *domain.Drone) error {
+	s.drone = drone
+	return nil
+}
+
+func (s *routerStore) ListDronesByOperator(operatorID string) []*domain.Drone {
+	if s.drone != nil && s.drone.OperatorID == operatorID {
+		return []*domain.Drone{s.drone}
+	}
+	return nil
+}
+
 func (s *routerStore) SaveOrder(o *store.Order) error {
 	s.order = o
 	return nil
@@ -109,6 +122,13 @@ func (s *routerStore) UpdateOrderStatus(id string, status store.OrderStatus) boo
 		return true
 	}
 	return false
+}
+
+func (s *routerStore) FindExecutorDrone([]string) (*domain.Drone, *domain.Operator, bool) {
+	if s.drone == nil || s.operator == nil {
+		return nil, nil, false
+	}
+	return s.drone, s.operator, true
 }
 
 func (s *routerStore) ConfirmPrice(id, operatorID string, acceptedPrice, commissionAmount float64) bool {

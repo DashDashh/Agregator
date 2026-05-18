@@ -11,4 +11,6 @@ type Store interface {
 	GetOperator(id string) (*domain.Operator, bool)
 	GetOperatorByEmail(email string) (*domain.Operator, bool)
 	SetOperatorPasswordHash(id, passwordHash string) bool
+	SaveDrone(drone *domain.Drone) error
+	ListDronesByOperator(operatorID string) []*domain.Drone
 }
