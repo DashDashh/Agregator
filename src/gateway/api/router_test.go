@@ -148,6 +148,18 @@ func (s *routerStore) RegisterIncident(i *domain.Incident) error {
 	return nil
 }
 
+func (s *routerStore) SaveSecurityAlert(*domain.SecurityAlert) error {
+	return nil
+}
+
+func (s *routerStore) ListSecurityAlerts(string, int) []*domain.SecurityAlert {
+	return nil
+}
+
+func (s *routerStore) ResolveSecurityAlert(string) bool {
+	return true
+}
+
 type routerPublisher struct{}
 
 func (p routerPublisher) PublishOrder(context.Context, *store.Order) error {

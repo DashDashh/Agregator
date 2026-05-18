@@ -29,8 +29,15 @@ func NewHandler(s contracts_component.Store, p Publisher, commissionRate float64
 		publisher:      p,
 		commissionRate: commissionRate,
 		authSecret:     authSecret,
-		monitor:        securitymonitor.New(nil),
+		monitor:        securitymonitor.New(securitySink(s)),
 	}
+}
+
+func securitySink(s contracts_component.Store) securitymonitor.Sink {
+	if alertStore, ok := s.(securitymonitor.AlertStore); ok {
+		return securitymonitor.StoreSink{Store: alertStore, Next: securitymonitor.LogSink{}}
+	}
+	return securitymonitor.LogSink{}
 }
 
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {

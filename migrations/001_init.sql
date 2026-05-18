@@ -63,6 +63,19 @@ CREATE TABLE IF NOT EXISTS incidents (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- События монитора безопасности: сохраняем алерты, чтобы их можно было просматривать
+-- и закрывать, а не только искать в логах контейнеров.
+CREATE TABLE IF NOT EXISTS security_alerts (
+    id          TEXT PRIMARY KEY,
+    code        TEXT NOT NULL,
+    severity    TEXT NOT NULL,
+    source      TEXT NOT NULL DEFAULT '',
+    order_id    TEXT NOT NULL DEFAULT '',
+    message     TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- На случай уже существующей таблицы без новых колонок — добиваем их идемпотентно
 ALTER TABLE orders
     ADD COLUMN IF NOT EXISTS operator_id TEXT NOT NULL DEFAULT '',
@@ -88,3 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 -- Индекс для поиска инцидентов по заказу
 CREATE INDEX IF NOT EXISTS idx_incidents_order_id ON incidents(order_id);
+-- Индексы для панели/проверки security monitor
+CREATE INDEX IF NOT EXISTS idx_security_alerts_status ON security_alerts(status);
+CREATE INDEX IF NOT EXISTS idx_security_alerts_order_id ON security_alerts(order_id);
+CREATE INDEX IF NOT EXISTS idx_security_alerts_created_at ON security_alerts(created_at DESC);

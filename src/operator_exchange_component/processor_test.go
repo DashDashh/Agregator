@@ -52,6 +52,10 @@ func (f *fakeStore) RegisterIncident(i *domain.Incident) error {
 	return nil
 }
 
+func (f *fakeStore) SaveSecurityAlert(*domain.SecurityAlert) error {
+	return nil
+}
+
 func TestProcessOperatorMessageAppliesPriceOffer(t *testing.T) {
 	payload, err := json.Marshal(models.PriceOfferPayload{
 		OrderID:    "order-1",

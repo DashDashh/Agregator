@@ -45,6 +45,10 @@ func (f *fakeStore) RegisterIncident(*domain.Incident) error {
 	return nil
 }
 
+func (f *fakeStore) SaveSecurityAlert(*domain.SecurityAlert) error {
+	return nil
+}
+
 func TestNewServiceConfiguresKafkaResources(t *testing.T) {
 	cfg := &config.Config{
 		KafkaBroker:           "localhost:9092",

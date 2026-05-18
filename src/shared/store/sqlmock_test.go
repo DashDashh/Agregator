@@ -255,6 +255,49 @@ func TestIncidentStoreMethods(t *testing.T) {
 	}
 }
 
+func TestSecurityAlertStoreMethods(t *testing.T) {
+	st, mock, closeDB := newMockStore(t)
+	defer closeDB()
+
+	createdAt := time.Now().UTC()
+	alert := &SecurityAlert{
+		ID:        "alert-1",
+		Code:      "incident_reported",
+		Severity:  "high",
+		Source:    "incident",
+		OrderID:   "order-1",
+		Message:   "negative order scenario registered",
+		Status:    "open",
+		CreatedAt: createdAt,
+	}
+	mock.ExpectExec("INSERT INTO security_alerts").
+		WithArgs(alert.ID, alert.Code, alert.Severity, alert.Source, alert.OrderID, alert.Message, alert.Status, alert.CreatedAt).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := st.SaveSecurityAlert(alert); err != nil {
+		t.Fatalf("SaveSecurityAlert returned error: %v", err)
+	}
+
+	mock.ExpectQuery("SELECT id, code, severity, source, order_id, message, status, created_at").
+		WithArgs("open", 50).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "code", "severity", "source", "order_id", "message", "status", "created_at"}).
+			AddRow(alert.ID, alert.Code, alert.Severity, alert.Source, alert.OrderID, alert.Message, alert.Status, alert.CreatedAt))
+	got := st.ListSecurityAlerts("open", 50)
+	if len(got) != 1 || got[0].ID != "alert-1" {
+		t.Fatalf("ListSecurityAlerts = %+v", got)
+	}
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE security_alerts SET status = 'resolved' WHERE id = $1 AND status <> 'resolved'")).
+		WithArgs("alert-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	if !st.ResolveSecurityAlert("alert-1") {
+		t.Fatal("ResolveSecurityAlert returned false")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func orderRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id", "customer_id", "description", "budget",

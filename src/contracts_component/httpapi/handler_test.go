@@ -61,6 +61,10 @@ func (f *fakeContractStore) RegisterIncident(i *domain.Incident) error {
 	return nil
 }
 
+func (f *fakeContractStore) SaveSecurityAlert(*domain.SecurityAlert) error {
+	return nil
+}
+
 type fakeContractPublisher struct {
 	payload models.ConfirmPricePayload
 	calls   int

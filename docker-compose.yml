@@ -46,6 +46,9 @@ services:
       args:
         SERVICE_PATH: ./cmd/registry
     profiles: ["microservices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       KAFKA_BROKER: kafka:29092
       BROKER_USER: ${BROKER_USER:-${ADMIN_USER:-admin}}
@@ -53,6 +56,8 @@ services:
       KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       COMPONENT_DISPATCH_MODE: broker
+      DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
+      MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure
     networks:
       - drones_net
@@ -63,6 +68,9 @@ services:
       args:
         SERVICE_PATH: ./cmd/orders
     profiles: ["microservices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       KAFKA_BROKER: kafka:29092
       BROKER_USER: ${BROKER_USER:-${ADMIN_USER:-admin}}
@@ -70,6 +78,8 @@ services:
       KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       COMPONENT_DISPATCH_MODE: broker
+      DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
+      MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure
     networks:
       - drones_net
@@ -80,6 +90,9 @@ services:
       args:
         SERVICE_PATH: ./cmd/contracts
     profiles: ["microservices"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       KAFKA_BROKER: kafka:29092
       BROKER_USER: ${BROKER_USER:-${ADMIN_USER:-admin}}
@@ -87,6 +100,8 @@ services:
       KAFKA_TLS_ENABLED: ${KAFKA_TLS_ENABLED:-false}
       SYSTEM_NAMESPACE: ${SYSTEM_NAMESPACE:-}
       COMPONENT_DISPATCH_MODE: broker
+      DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
+      MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure
     networks:
       - drones_net

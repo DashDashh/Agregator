@@ -18,6 +18,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component/mqtt"
 	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
 	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
+	securityapi "github.com/kirilltahmazidi/aggregator/src/security_monitor_component/httpapi"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
@@ -69,6 +70,7 @@ func main() {
 		Registry:  registryapi.NewHandler(s, cfg.AuthSecret),
 		Orders:    ordersapi.NewHandler(s, operatorPublisher, cfg.AuthSecret),
 		Contracts: contractsapi.NewHandler(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret),
+		Security:  securityapi.NewHandler(s, cfg.AuthSecret),
 	})
 	httpServer := &http.Server{
 		Addr:    ":8080",
