@@ -83,13 +83,13 @@ func TestLoadUsesFallbackForInvalidFloatEnv(t *testing.T) {
 
 func TestLoadAuthRequiredDefaultAndOverride(t *testing.T) {
 	cfg := Load()
-	if cfg.AuthRequired {
-		t.Fatal("AuthRequired default = true, want false for integration compatibility")
+	if !cfg.AuthRequired {
+		t.Fatal("AuthRequired default = false, want true")
 	}
 
-	t.Setenv("AUTH_REQUIRED", "true")
+	t.Setenv("AUTH_REQUIRED", "false")
 	cfg = Load()
-	if !cfg.AuthRequired {
-		t.Fatal("AuthRequired = false, want true from AUTH_REQUIRED=true")
+	if cfg.AuthRequired {
+		t.Fatal("AuthRequired = true, want false from AUTH_REQUIRED=false")
 	}
 }

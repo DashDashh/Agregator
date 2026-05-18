@@ -70,7 +70,7 @@ func Load() *Config {
 		OperatorResponseTopic: getEnv("KAFKA_OPERATOR_RESPONSE_TOPIC", defaultOperatorResponseTopic),
 		CommissionRate:        commissionRate,
 		AuthSecret:            getEnv("AUTH_SECRET", "dev-only-change-me"),
-		AuthRequired:          getEnvBool("AUTH_REQUIRED", false),
+		AuthRequired:          getEnvBool("AUTH_REQUIRED", true),
 		DatabaseURL:           getEnv("DATABASE_URL", "postgres://aggregator:secret@localhost:5432/aggregator?sslmode=disable"),
 		MigrationsPath:        getEnv("MIGRATIONS_PATH", "migrations/001_init.sql"),
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
