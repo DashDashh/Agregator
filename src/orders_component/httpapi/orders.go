@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kirilltahmazidi/aggregator/src/shared/droneanalytics"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
@@ -87,6 +88,7 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[api] order created id=%s customer=%s", order.ID, order.CustomerID)
+	h.logAnalyticsEvent("event", "info", "Order created: "+order.ID)
 
 	if err := h.publisher.PublishOrder(r.Context(), order); err != nil {
 		log.Printf("[api] failed to publish order to kafka: %v", err)
@@ -204,10 +206,22 @@ func (h *Handler) AutoSearchExecutor(w http.ResponseWriter, r *http.Request) {
 		Score:         coverageScore(requiredGoals, drone.SecurityGoals),
 		Price:         req.MaxBudget,
 	}
+	h.logAnalyticsEvent("event", "notice", "Executor drone selected for order "+orderID+": "+drone.ID)
 	httpx.Respond(w, http.StatusOK, models.AutoSearchExecutorResponse{
 		OrderID:    orderID,
 		Selected:   &selected,
 		Candidates: []models.Candidate{selected},
+	})
+}
+
+func (h *Handler) logAnalyticsEvent(eventType, severity, message string) {
+	if h.analytics == nil {
+		return
+	}
+	h.analytics.LogEventAsync(droneanalytics.Event{
+		EventType: eventType,
+		Severity:  severity,
+		Message:   message,
 	})
 }
 

@@ -23,6 +23,12 @@ type Config struct {
 	OperatorTransport     string // kafka | both (MQTT только для operator.* топиков)
 	ComponentDispatchMode string // inprocess | broker
 
+	DroneAnalyticsEnabled    bool
+	DroneAnalyticsURL        string
+	DroneAnalyticsAPIKey     string
+	DroneAnalyticsServiceID  int
+	DroneAnalyticsAPIVersion string
+
 	MQTTBroker            string
 	MQTTClientID          string
 	MQTTUsername          string
@@ -76,6 +82,12 @@ func Load() *Config {
 		OperatorTransport:     normalizeOperatorTransport(getEnv("OPERATOR_TRANSPORT", defaultOperatorTransport)),
 		ComponentDispatchMode: normalizeComponentDispatchMode(getEnv("COMPONENT_DISPATCH_MODE", defaultDispatchMode)),
 
+		DroneAnalyticsEnabled:    getEnvBool("DRONE_ANALYTICS_ENABLED", false),
+		DroneAnalyticsURL:        getEnv("DRONE_ANALYTICS_URL", ""),
+		DroneAnalyticsAPIKey:     getEnv("DRONE_ANALYTICS_API_KEY", ""),
+		DroneAnalyticsServiceID:  getEnvInt("DRONE_ANALYTICS_SERVICE_ID", 1),
+		DroneAnalyticsAPIVersion: getEnv("DRONE_ANALYTICS_API_VERSION", "1.1.0"),
+
 		MQTTBroker:            getEnv("MQTT_BROKER", "mqtt:1883"),
 		MQTTClientID:          getEnv("MQTT_CLIENT_ID", fmt.Sprintf("%s-%s-%s", defaultClientName, mqttClientScope, "mqtt")),
 		MQTTUsername:          getEnv("MQTT_USERNAME", ""),
@@ -120,6 +132,15 @@ func getEnvFloat(key string, fallback float64) float64 {
 	if v := os.Getenv(key); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
+		}
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if i, err := strconv.Atoi(v); err == nil {
+			return i
 		}
 	}
 	return fallback

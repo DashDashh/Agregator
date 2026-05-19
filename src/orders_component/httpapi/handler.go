@@ -6,6 +6,7 @@ import (
 
 	"github.com/kirilltahmazidi/aggregator/src/orders_component"
 	"github.com/kirilltahmazidi/aggregator/src/registry_component/auth"
+	"github.com/kirilltahmazidi/aggregator/src/shared/droneanalytics"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
@@ -19,6 +20,7 @@ type Handler struct {
 	publisher    Publisher
 	authSecret   string
 	authRequired bool
+	analytics    *droneanalytics.Client
 }
 
 func NewHandler(s orders_component.Store, p Publisher, authSecret string) *Handler {
@@ -26,7 +28,11 @@ func NewHandler(s orders_component.Store, p Publisher, authSecret string) *Handl
 }
 
 func NewHandlerWithAuthRequired(s orders_component.Store, p Publisher, authSecret string, authRequired bool) *Handler {
-	return &Handler{store: s, publisher: p, authSecret: authSecret, authRequired: authRequired}
+	return NewHandlerWithAuthRequiredAndAnalytics(s, p, authSecret, authRequired, nil)
+}
+
+func NewHandlerWithAuthRequiredAndAnalytics(s orders_component.Store, p Publisher, authSecret string, authRequired bool, analytics *droneanalytics.Client) *Handler {
+	return &Handler{store: s, publisher: p, authSecret: authSecret, authRequired: authRequired, analytics: analytics}
 }
 
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {

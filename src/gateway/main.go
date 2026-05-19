@@ -19,6 +19,7 @@ import (
 	ordersapi "github.com/kirilltahmazidi/aggregator/src/orders_component/httpapi"
 	registryapi "github.com/kirilltahmazidi/aggregator/src/registry_component/httpapi"
 	securityapi "github.com/kirilltahmazidi/aggregator/src/security_monitor_component/httpapi"
+	"github.com/kirilltahmazidi/aggregator/src/shared/droneanalytics"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
 )
 
@@ -49,9 +50,22 @@ func main() {
 	}
 	log.Println("[main] migrations applied")
 
+	analyticsClient := droneanalytics.NewClient(droneanalytics.Config{
+		Enabled:    cfg.DroneAnalyticsEnabled,
+		BaseURL:    cfg.DroneAnalyticsURL,
+		APIKey:     cfg.DroneAnalyticsAPIKey,
+		ServiceID:  cfg.DroneAnalyticsServiceID,
+		APIVersion: cfg.DroneAnalyticsAPIVersion,
+	})
+	if analyticsClient.Enabled() {
+		log.Printf("[main] drone analytics integration enabled url=%s service_id=%d", cfg.DroneAnalyticsURL, cfg.DroneAnalyticsServiceID)
+	} else {
+		log.Println("[main] drone analytics integration disabled")
+	}
+
 	h := bushandler.New()
 	gw := busgateway.New(h)
-	svc := kafka.NewService(cfg, gw, s)
+	svc := kafka.NewServiceWithAnalytics(cfg, gw, s, analyticsClient)
 
 	operatorPublisher := publisher.NewMultiPublisher(svc)
 	var mqttSvc *mqtt.Service
@@ -68,8 +82,8 @@ func main() {
 
 	router := api.NewRouter(api.Handlers{
 		Registry:  registryapi.NewHandlerWithAuthRequired(s, cfg.AuthSecret, cfg.AuthRequired),
-		Orders:    ordersapi.NewHandlerWithAuthRequired(s, operatorPublisher, cfg.AuthSecret, cfg.AuthRequired),
-		Contracts: contractsapi.NewHandlerWithAuthRequired(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret, cfg.AuthRequired),
+		Orders:    ordersapi.NewHandlerWithAuthRequiredAndAnalytics(s, operatorPublisher, cfg.AuthSecret, cfg.AuthRequired, analyticsClient),
+		Contracts: contractsapi.NewHandlerWithAuthRequiredAndAnalytics(s, operatorPublisher, cfg.CommissionRate, cfg.AuthSecret, cfg.AuthRequired, analyticsClient),
 		Security:  securityapi.NewHandler(s, cfg.AuthSecret),
 	})
 	httpServer := &http.Server{

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kirilltahmazidi/aggregator/src/shared/domain"
+	"github.com/kirilltahmazidi/aggregator/src/shared/droneanalytics"
 	"github.com/kirilltahmazidi/aggregator/src/shared/httpx"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 )
@@ -71,6 +72,7 @@ func (h *Handler) ConfirmPrice(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[api] failed to publish confirm_price: %v", err)
 	}
 	log.Printf("[api] price confirmed order_id=%s operator=%s price=%.2f", orderID, req.OperatorID, req.AcceptedPrice)
+	h.logAnalyticsEvent("event", "notice", "Order price confirmed: "+orderID)
 
 	httpx.Respond(w, http.StatusOK, map[string]interface{}{
 		"order_id":          orderID,
@@ -127,6 +129,7 @@ func (h *Handler) OfferPrice(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusBadRequest, "нельзя предложить цену для текущего статуса заказа")
 		return
 	}
+	h.logAnalyticsEvent("event", "info", "Operator offered price for order "+orderID)
 
 	httpx.Respond(w, http.StatusOK, map[string]interface{}{
 		"order_id":      orderID,
@@ -168,6 +171,7 @@ func (h *Handler) ConfirmCompletion(w http.ResponseWriter, r *http.Request) {
 		httpx.RespondError(w, http.StatusBadRequest, "недопустимое состояние: заказ еще не выполнен оператором")
 		return
 	}
+	h.logAnalyticsEvent("event", "notice", "Order completed: "+orderID)
 
 	httpx.Respond(w, http.StatusOK, map[string]interface{}{
 		"order_id": orderID,
@@ -247,6 +251,7 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 	}
 	h.monitor.IncidentReported(*incident)
 	log.Printf("[api] incident registered order_id=%s incident_id=%s", orderID, incident.ID)
+	h.logAnalyticsEvent("event", "critical", "Incident registered for order "+orderID)
 
 	httpx.Respond(w, http.StatusCreated, models.IncidentResponse{
 		IncidentID:   incident.ID,
@@ -257,6 +262,17 @@ func (h *Handler) ReportIncident(w http.ResponseWriter, r *http.Request) {
 		Reason:       incident.Reason,
 		DamageAmount: incident.DamageAmount,
 		Message:      "incident registered; payout calculation is handled by insurer system",
+	})
+}
+
+func (h *Handler) logAnalyticsEvent(eventType, severity, message string) {
+	if h.analytics == nil {
+		return
+	}
+	h.analytics.LogEventAsync(droneanalytics.Event{
+		EventType: eventType,
+		Severity:  severity,
+		Message:   message,
 	})
 }
 

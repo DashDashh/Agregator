@@ -239,6 +239,11 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile kafka -
 | `AUTH_SECRET` | dev-значение | секрет для токенов |
 | `DATABASE_URL` | dev-значение | подключение к PostgreSQL |
 | `COMMISSION_RATE` | `0.1` | комиссия агрегатора |
+| `DRONE_ANALYTICS_ENABLED` | `false` | включает отправку логов в сервис команды 4 |
+| `DRONE_ANALYTICS_URL` | пусто | базовый URL сервиса команды 4, например `https://infopanel.csse.ru/api` |
+| `DRONE_ANALYTICS_API_KEY` | пусто | API key для заголовка `X-API-Key` |
+| `DRONE_ANALYTICS_SERVICE_ID` | `1` | числовой id агрегатора в DroneAnalytics |
+| `DRONE_ANALYTICS_API_VERSION` | `1.1.0` | версия API команды 4 для поля `apiVersion` |
 
 ## Режим транспорта
 
@@ -582,6 +587,8 @@ curl http://localhost:8081/security/alerts?status=open \
 curl -X POST http://localhost:8081/security/alerts/$ALERT_ID/resolve \
   -H "Authorization: Bearer $OPERATOR_TOKEN"
 ```
+
+Если включены `DRONE_ANALYTICS_ENABLED=true`, `DRONE_ANALYTICS_URL` и `DRONE_ANALYTICS_API_KEY`, агрегатор дополнительно отправляет события в сервис команды 4 через `POST {DRONE_ANALYTICS_URL}/log/event`. Обычные события заказа уходят как `event`, алерты монитора безопасности — как `safety_event`.
 
 ## Остановка
 

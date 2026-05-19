@@ -22,3 +22,7 @@ data/
 tmp/
 
 .DS_Store
+
+# External integration repo cloned for reference
+droneAnalitics/
+ 
