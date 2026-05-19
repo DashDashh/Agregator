@@ -93,3 +93,26 @@ func TestLoadAuthRequiredDefaultAndOverride(t *testing.T) {
 		t.Fatal("AuthRequired = true, want false from AUTH_REQUIRED=false")
 	}
 }
+
+func TestLoadDroneAnalyticsConfig(t *testing.T) {
+	t.Setenv("DRONE_ANALYTICS_ENABLED", "true")
+	t.Setenv("DRONE_ANALYTICS_URL", "https://infopanel.csse.ru/api")
+	t.Setenv("DRONE_ANALYTICS_API_KEY", "test-key")
+	t.Setenv("DRONE_ANALYTICS_SERVICE_ID", "9")
+	t.Setenv("DRONE_ANALYTICS_API_VERSION", "1.1.0")
+
+	cfg := Load()
+
+	if !cfg.DroneAnalyticsEnabled {
+		t.Fatal("DroneAnalyticsEnabled = false, want true")
+	}
+	if cfg.DroneAnalyticsURL != "https://infopanel.csse.ru/api" {
+		t.Fatalf("DroneAnalyticsURL = %q", cfg.DroneAnalyticsURL)
+	}
+	if cfg.DroneAnalyticsAPIKey != "test-key" {
+		t.Fatalf("DroneAnalyticsAPIKey = %q", cfg.DroneAnalyticsAPIKey)
+	}
+	if cfg.DroneAnalyticsServiceID != 9 {
+		t.Fatalf("DroneAnalyticsServiceID = %d, want 9", cfg.DroneAnalyticsServiceID)
+	}
+}

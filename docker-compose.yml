@@ -35,6 +35,11 @@ services:
       COMPONENT_DISPATCH_MODE: ${COMPONENT_DISPATCH_MODE:-inprocess}
       AUTH_SECRET: ${AUTH_SECRET:-dev_change_me_please_32_chars_min}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      DRONE_ANALYTICS_ENABLED: ${DRONE_ANALYTICS_ENABLED:-false}
+      DRONE_ANALYTICS_URL: ${DRONE_ANALYTICS_URL:-}
+      DRONE_ANALYTICS_API_KEY: ${DRONE_ANALYTICS_API_KEY:-}
+      DRONE_ANALYTICS_SERVICE_ID: ${DRONE_ANALYTICS_SERVICE_ID:-1}
+      DRONE_ANALYTICS_API_VERSION: ${DRONE_ANALYTICS_API_VERSION:-1.1.0}
       DATABASE_URL: postgres://aggregator:secret@postgres:5432/aggregator?sslmode=disable
       MIGRATIONS_PATH: /migrations/001_init.sql
     restart: on-failure

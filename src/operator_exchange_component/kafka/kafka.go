@@ -9,6 +9,7 @@ import (
 	"github.com/kirilltahmazidi/aggregator/src/gateway/config"
 	"github.com/kirilltahmazidi/aggregator/src/operator_exchange_component"
 	securitymonitor "github.com/kirilltahmazidi/aggregator/src/security_monitor_component"
+	"github.com/kirilltahmazidi/aggregator/src/shared/droneanalytics"
 	"github.com/kirilltahmazidi/aggregator/src/shared/kafkautil"
 	"github.com/kirilltahmazidi/aggregator/src/shared/models"
 	"github.com/kirilltahmazidi/aggregator/src/shared/store"
@@ -30,6 +31,10 @@ type Service struct {
 }
 
 func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_component.Store) *Service {
+	return NewServiceWithAnalytics(cfg, g, s, nil)
+}
+
+func NewServiceWithAnalytics(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_component.Store, analytics *droneanalytics.Client) *Service {
 	dialer := kafkautil.NewDialer()
 	transport := kafkautil.NewTransport(dialer)
 
@@ -97,16 +102,20 @@ func NewService(cfg *config.Config, g *busgateway.Gateway, s operator_exchange_c
 		dlt:             dlt,
 		gateway:         g,
 		store:           s,
-		monitor:         securitymonitor.New(securitySink(s)),
+		monitor:         securitymonitor.New(securitySink(s, analytics)),
 		dispatchMode:    cfg.ComponentDispatchMode,
 	}
 }
 
-func securitySink(s operator_exchange_component.Store) securitymonitor.Sink {
+func securitySink(s operator_exchange_component.Store, analytics *droneanalytics.Client) securitymonitor.Sink {
+	sink := securitymonitor.Sink(securitymonitor.LogSink{})
 	if alertStore, ok := s.(securitymonitor.AlertStore); ok {
-		return securitymonitor.StoreSink{Store: alertStore, Next: securitymonitor.LogSink{}}
+		sink = securitymonitor.StoreSink{Store: alertStore, Next: sink}
 	}
-	return securitymonitor.LogSink{}
+	if analytics != nil {
+		sink = securitymonitor.AnalyticsSink{Client: analytics, Next: sink}
+	}
+	return sink
 }
 
 // PublishOrder отправляет заказ в топик operator.requests — эксплуатанты его читают.
